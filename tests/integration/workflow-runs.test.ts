@@ -118,6 +118,63 @@ describe("POST /workflows/:id/execute", () => {
   });
 });
 
+describe("POST /workflows/by-name/:name/execute", () => {
+  beforeEach(() => {
+    mockWorkflows.length = 0;
+    mockRuns.length = 0;
+    mockRunFlow.mockClear();
+  });
+
+  it("executes a workflow by name", async () => {
+    mockWorkflows.push({
+      id: "wf-1",
+      orgId: "org-1",
+      name: "newsletter-subscribe",
+      status: "active",
+      windmillFlowPath: "f/workflows/org_1/newsletter_subscribe",
+      windmillWorkspace: "prod",
+      dag: VALID_LINEAR_DAG,
+    });
+
+    const res = await request
+      .post("/workflows/by-name/newsletter-subscribe/execute")
+      .set(AUTH)
+      .send({ orgId: "org-1", inputs: { email: "test@example.com" } });
+
+    expect(res.status).toBe(201);
+    expect(res.body.status).toBe("queued");
+    expect(res.body.windmillJobId).toBe("job-uuid-123");
+    expect(mockRunFlow).toHaveBeenCalled();
+  });
+
+  it("returns 404 for unknown workflow name", async () => {
+    const res = await request
+      .post("/workflows/by-name/nonexistent/execute")
+      .set(AUTH)
+      .send({ orgId: "org-1" });
+
+    expect(res.status).toBe(404);
+    expect(res.body.error).toContain("nonexistent");
+  });
+
+  it("requires orgId in body", async () => {
+    const res = await request
+      .post("/workflows/by-name/test-flow/execute")
+      .set(AUTH)
+      .send({ inputs: {} }); // missing orgId
+
+    expect(res.status).toBe(400);
+  });
+
+  it("requires authentication", async () => {
+    const res = await request
+      .post("/workflows/by-name/test-flow/execute")
+      .send({ orgId: "org-1" });
+
+    expect(res.status).toBe(401);
+  });
+});
+
 describe("GET /workflow-runs/:id", () => {
   beforeEach(() => {
     mockWorkflows.length = 0;

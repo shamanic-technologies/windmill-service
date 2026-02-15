@@ -119,6 +119,47 @@ export const WorkflowRunResponseSchema = z
   })
   .openapi("WorkflowRunResponse");
 
+// --- Deploy schemas ---
+
+export const DeployWorkflowItemSchema = z
+  .object({
+    name: z.string().min(1),
+    description: z.string().optional(),
+    dag: DAGSchema,
+  })
+  .openapi("DeployWorkflowItem");
+
+export const DeployWorkflowsSchema = z
+  .object({
+    orgId: z.string().min(1),
+    workflows: z.array(DeployWorkflowItemSchema).min(1),
+  })
+  .openapi("DeployWorkflowsRequest");
+
+export const DeployWorkflowResultSchema = z
+  .object({
+    id: z.string().uuid(),
+    name: z.string(),
+    action: z.enum(["created", "updated"]),
+  })
+  .openapi("DeployWorkflowResult");
+
+export const DeployWorkflowsResponseSchema = z
+  .object({
+    workflows: z.array(DeployWorkflowResultSchema),
+  })
+  .openapi("DeployWorkflowsResponse");
+
+// --- Execute by name schema ---
+
+export const ExecuteByNameSchema = z
+  .object({
+    orgId: z.string().min(1),
+    inputs: z.record(z.unknown()).optional(),
+    runId: z.string().optional(),
+  })
+  .openapi("ExecuteByNameRequest");
+
 // --- Common ---
 
 export const ErrorResponseSchema = z
@@ -371,6 +412,59 @@ registry.registerPath({
       content: {
         "application/json": { schema: WorkflowRunResponseSchema },
       },
+    },
+  },
+});
+
+registry.registerPath({
+  method: "put",
+  path: "/workflows/deploy",
+  summary: "Deploy (upsert) workflows by name",
+  tags: ["Workflows"],
+  security: [{ apiKey: [] }],
+  request: {
+    body: {
+      required: true,
+      content: { "application/json": { schema: DeployWorkflowsSchema } },
+    },
+  },
+  responses: {
+    200: {
+      description: "Workflows deployed",
+      content: {
+        "application/json": { schema: DeployWorkflowsResponseSchema },
+      },
+    },
+    400: {
+      description: "Validation error",
+      content: { "application/json": { schema: ErrorResponseSchema } },
+    },
+  },
+});
+
+registry.registerPath({
+  method: "post",
+  path: "/workflows/by-name/{name}/execute",
+  summary: "Execute a workflow by name",
+  tags: ["Workflow Runs"],
+  security: [{ apiKey: [] }],
+  request: {
+    params: z.object({ name: z.string() }),
+    body: {
+      required: true,
+      content: { "application/json": { schema: ExecuteByNameSchema } },
+    },
+  },
+  responses: {
+    201: {
+      description: "Execution started",
+      content: {
+        "application/json": { schema: WorkflowRunResponseSchema },
+      },
+    },
+    404: {
+      description: "Workflow not found",
+      content: { "application/json": { schema: ErrorResponseSchema } },
     },
   },
 });

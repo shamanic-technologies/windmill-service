@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { VALID_LINEAR_DAG, DAG_WITH_UNKNOWN_TYPE } from "../helpers/fixtures.js";
+import {
+  VALID_LINEAR_DAG,
+  DAG_WITH_UNKNOWN_TYPE,
+  DAG_WITH_TRANSACTIONAL_EMAIL_SEND,
+} from "../helpers/fixtures.js";
 
 // Mock DB
 const mockDbRows: Record<string, unknown>[] = [];
@@ -154,6 +158,103 @@ describe("GET /workflows", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.workflows).toBeDefined();
+  });
+});
+
+describe("PUT /workflows/deploy", () => {
+  beforeEach(() => {
+    mockDbRows.length = 0;
+  });
+
+  it("creates new workflows", async () => {
+    const res = await request
+      .put("/workflows/deploy")
+      .set(AUTH)
+      .send({
+        orgId: "org-1",
+        workflows: [
+          {
+            name: "newsletter-subscribe",
+            description: "Newsletter signup",
+            dag: DAG_WITH_TRANSACTIONAL_EMAIL_SEND,
+          },
+        ],
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.workflows).toHaveLength(1);
+    expect(res.body.workflows[0].name).toBe("newsletter-subscribe");
+    expect(res.body.workflows[0].action).toBe("created");
+    expect(res.body.workflows[0].id).toBeDefined();
+  });
+
+  it("updates existing workflows (idempotent)", async () => {
+    mockDbRows.push({
+      id: "wf-existing",
+      orgId: "org-1",
+      name: "newsletter-subscribe",
+      description: "Old description",
+      status: "active",
+      dag: DAG_WITH_TRANSACTIONAL_EMAIL_SEND,
+      windmillFlowPath: "f/workflows/org-1/newsletter_subscribe",
+      windmillWorkspace: "prod",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const res = await request
+      .put("/workflows/deploy")
+      .set(AUTH)
+      .send({
+        orgId: "org-1",
+        workflows: [
+          {
+            name: "newsletter-subscribe",
+            description: "Updated description",
+            dag: DAG_WITH_TRANSACTIONAL_EMAIL_SEND,
+          },
+        ],
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.workflows).toHaveLength(1);
+    expect(res.body.workflows[0].action).toBe("updated");
+  });
+
+  it("rejects if any DAG is invalid (no partial writes)", async () => {
+    const res = await request
+      .put("/workflows/deploy")
+      .set(AUTH)
+      .send({
+        orgId: "org-1",
+        workflows: [
+          { name: "good-flow", dag: VALID_LINEAR_DAG },
+          { name: "bad-flow", dag: DAG_WITH_UNKNOWN_TYPE },
+        ],
+      });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("Invalid DAGs");
+    expect(res.body.details).toHaveLength(1);
+    expect(res.body.details[0].name).toBe("bad-flow");
+  });
+
+  it("requires authentication", async () => {
+    const res = await request.put("/workflows/deploy").send({
+      orgId: "org-1",
+      workflows: [{ name: "test", dag: VALID_LINEAR_DAG }],
+    });
+
+    expect(res.status).toBe(401);
+  });
+
+  it("validates request body", async () => {
+    const res = await request
+      .put("/workflows/deploy")
+      .set(AUTH)
+      .send({ orgId: "org-1" }); // missing workflows
+
+    expect(res.status).toBe(400);
   });
 });
 

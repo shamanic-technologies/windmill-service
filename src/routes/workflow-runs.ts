@@ -4,7 +4,7 @@ import { db } from "../db/index.js";
 import { workflows, workflowRuns } from "../db/schema.js";
 import { requireApiKey } from "../middleware/auth.js";
 import { getWindmillClient } from "../lib/windmill-client.js";
-import { ExecuteWorkflowSchema } from "../schemas.js";
+import { ExecuteWorkflowSchema, ExecuteByNameSchema } from "../schemas.js";
 
 const router = Router();
 
@@ -16,6 +16,89 @@ function formatRun(r: typeof workflowRuns.$inferSelect) {
     createdAt: r.createdAt?.toISOString() ?? null,
   };
 }
+
+// POST /workflows/by-name/:name/execute — Execute a workflow by name
+router.post(
+  "/workflows/by-name/:name/execute",
+  requireApiKey,
+  async (req, res) => {
+    try {
+      const body = ExecuteByNameSchema.parse(req.body);
+
+      // Look up workflow by (orgId + name)
+      const [workflow] = await db
+        .select()
+        .from(workflows)
+        .where(
+          and(
+            eq(workflows.orgId, body.orgId),
+            eq(workflows.name, req.params.name),
+            rawSql`${workflows.status} != 'deleted'`
+          )
+        );
+
+      if (!workflow) {
+        res.status(404).json({
+          error: `Workflow "${req.params.name}" not found for org "${body.orgId}"`,
+        });
+        return;
+      }
+
+      if (!workflow.windmillFlowPath) {
+        res
+          .status(400)
+          .json({ error: "Workflow has no Windmill flow path" });
+        return;
+      }
+
+      // Run in Windmill
+      let windmillJobId: string | null = null;
+      const client = getWindmillClient();
+      if (client) {
+        try {
+          windmillJobId = await client.runFlow(
+            workflow.windmillFlowPath,
+            body.inputs ?? {}
+          );
+        } catch (err) {
+          console.error(
+            "[workflow-runs] Failed to run flow in Windmill:",
+            err
+          );
+          res
+            .status(502)
+            .json({ error: "Failed to start workflow in Windmill" });
+          return;
+        }
+      }
+
+      // Create workflow run in DB
+      const [run] = await db
+        .insert(workflowRuns)
+        .values({
+          workflowId: workflow.id,
+          orgId: workflow.orgId,
+          campaignId: workflow.campaignId,
+          subrequestId: workflow.subrequestId,
+          runId: body.runId,
+          windmillJobId,
+          windmillWorkspace: workflow.windmillWorkspace,
+          status: "queued",
+          inputs: body.inputs,
+        })
+        .returning();
+
+      res.status(201).json(formatRun(run));
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === "ZodError") {
+        res.status(400).json({ error: "Validation error", details: err });
+        return;
+      }
+      console.error("[workflow-runs] POST execute-by-name error:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  }
+);
 
 // POST /workflows/:id/execute — Execute a workflow
 router.post("/workflows/:id/execute", requireApiKey, async (req, res) => {

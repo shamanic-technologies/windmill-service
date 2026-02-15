@@ -6,7 +6,11 @@ import { requireApiKey } from "../middleware/auth.js";
 import { validateDAG, type DAG } from "../lib/dag-validator.js";
 import { dagToOpenFlow } from "../lib/dag-to-openflow.js";
 import { getWindmillClient } from "../lib/windmill-client.js";
-import { CreateWorkflowSchema, UpdateWorkflowSchema } from "../schemas.js";
+import {
+  CreateWorkflowSchema,
+  UpdateWorkflowSchema,
+  DeployWorkflowsSchema,
+} from "../schemas.js";
 
 const router = Router();
 
@@ -82,6 +86,113 @@ router.post("/workflows", requireApiKey, async (req, res) => {
       return;
     }
     console.error("[workflows] POST error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// PUT /workflows/deploy — Batch upsert workflows by (orgId + name)
+router.put("/workflows/deploy", requireApiKey, async (req, res) => {
+  try {
+    const body = DeployWorkflowsSchema.parse(req.body);
+
+    // Validate ALL DAGs first — reject if any are invalid
+    const dagErrors: { name: string; errors: unknown[] }[] = [];
+    for (const wf of body.workflows) {
+      const validation = validateDAG(wf.dag as DAG);
+      if (!validation.valid) {
+        dagErrors.push({ name: wf.name, errors: validation.errors ?? [] });
+      }
+    }
+    if (dagErrors.length > 0) {
+      res.status(400).json({ error: "Invalid DAGs", details: dagErrors });
+      return;
+    }
+
+    const results: { id: string; name: string; action: "created" | "updated" }[] = [];
+
+    for (const wf of body.workflows) {
+      const dag = wf.dag as DAG;
+      const openFlow = dagToOpenFlow(dag, wf.name);
+      const flowPath = generateFlowPath(body.orgId, wf.name);
+      const client = getWindmillClient();
+
+      // Check if workflow already exists for this (orgId, name)
+      const [existing] = await db
+        .select()
+        .from(workflows)
+        .where(
+          and(
+            eq(workflows.orgId, body.orgId),
+            eq(workflows.name, wf.name),
+            rawSql`${workflows.status} != 'deleted'`
+          )
+        );
+
+      if (existing) {
+        // Update existing workflow
+        if (client && existing.windmillFlowPath) {
+          try {
+            await client.updateFlow(existing.windmillFlowPath, {
+              summary: wf.name,
+              description: wf.description,
+              value: openFlow.value,
+              schema: openFlow.schema,
+            });
+          } catch (err) {
+            console.error("[workflows] deploy: failed to update Windmill flow:", err);
+          }
+        }
+
+        const [updated] = await db
+          .update(workflows)
+          .set({
+            description: wf.description ?? existing.description,
+            dag: wf.dag,
+            updatedAt: new Date(),
+          })
+          .where(eq(workflows.id, existing.id))
+          .returning();
+
+        results.push({ id: updated.id, name: updated.name, action: "updated" });
+      } else {
+        // Create new workflow
+        if (client) {
+          try {
+            await client.createFlow({
+              path: flowPath,
+              summary: wf.name,
+              description: wf.description,
+              value: openFlow.value,
+              schema: openFlow.schema,
+            });
+          } catch (err) {
+            console.error("[workflows] deploy: failed to create Windmill flow:", err);
+          }
+        }
+
+        const [created] = await db
+          .insert(workflows)
+          .values({
+            orgId: body.orgId,
+            name: wf.name,
+            description: wf.description,
+            dag: wf.dag,
+            windmillFlowPath: flowPath,
+            status: "active",
+          })
+          .returning();
+
+        results.push({ id: created.id, name: created.name, action: "created" });
+      }
+    }
+
+    res.json({ workflows: results });
+  } catch (err: unknown) {
+    if (err instanceof Error && err.name === "ZodError") {
+      res.status(400).json({ error: "Validation error", details: err });
+      return;
+    }
+    console.error("[workflows] PUT deploy error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });
