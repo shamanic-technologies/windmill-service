@@ -1,0 +1,23 @@
+name: Deploy node scripts to Windmill
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "scripts/nodes/**"
+      - "scripts/deploy-nodes.ts"
+      - "src/lib/windmill-client.ts"
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - run: npm run deploy:nodes
+        env:
+          WINDMILL_SERVER_URL: ${{ secrets.WINDMILL_SERVER_URL }}
+          WINDMILL_SERVER_API_KEY: ${{ secrets.WINDMILL_SERVER_API_KEY }}
