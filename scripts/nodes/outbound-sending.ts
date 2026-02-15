@@ -11,13 +11,18 @@ export async function main(
     runId: string;
   }
 ) {
+  const baseUrl = Bun.env.OUTBOUND_SENDING_URL;
+  const apiKey = Bun.env.OUTBOUND_SENDING_API_KEY;
+  if (!baseUrl) throw new Error("OUTBOUND_SENDING_URL is not set");
+  if (!apiKey) throw new Error("OUTBOUND_SENDING_API_KEY is not set");
+
   const response = await fetch(
-    `${Bun.env.OUTBOUND_SENDING_URL}/send`,
+    `${baseUrl}/send`,
     {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": Bun.env.OUTBOUND_SENDING_API_KEY!,
+        "x-api-key": apiKey,
         "x-clerk-org-id": context.orgId,
       },
       body: JSON.stringify({

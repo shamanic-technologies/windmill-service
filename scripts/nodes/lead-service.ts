@@ -12,13 +12,18 @@ export async function main(
     runId: string;
   }
 ) {
+  const baseUrl = Bun.env.LEAD_SERVICE_URL;
+  const apiKey = Bun.env.LEAD_SERVICE_API_KEY;
+  if (!baseUrl) throw new Error("LEAD_SERVICE_URL is not set");
+  if (!apiKey) throw new Error("LEAD_SERVICE_API_KEY is not set");
+
   const response = await fetch(
-    `${Bun.env.LEAD_SERVICE_URL}/buffer/next`,
+    `${baseUrl}/buffer/next`,
     {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": Bun.env.LEAD_SERVICE_API_KEY!,
+        "x-api-key": apiKey,
         "x-clerk-org-id": context.orgId,
       },
       body: JSON.stringify({

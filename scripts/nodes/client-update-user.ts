@@ -10,15 +10,20 @@ export async function main(
     metadata?: Record<string, unknown> | null;
   }
 ) {
+  const baseUrl = Bun.env.CLIENT_SERVICE_URL;
+  const apiKey = Bun.env.CLIENT_SERVICE_API_KEY;
+  if (!baseUrl) throw new Error("CLIENT_SERVICE_URL is not set");
+  if (!apiKey) throw new Error("CLIENT_SERVICE_API_KEY is not set");
+
   const { userId, ...body } = config;
 
   const response = await fetch(
-    `${Bun.env.CLIENT_SERVICE_URL!}/anonymous-users/${userId}`,
+    `${baseUrl}/anonymous-users/${userId}`,
     {
       method: "PATCH",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": Bun.env.CLIENT_SERVICE_API_KEY!,
+        "x-api-key": apiKey,
       },
       body: JSON.stringify(body),
     }

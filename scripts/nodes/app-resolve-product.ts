@@ -4,11 +4,16 @@ export async function main(
     productId: string;
   }
 ) {
+  const baseUrl = Bun.env.STRIPE_SERVICE_URL;
+  const apiKey = Bun.env.STRIPE_SERVICE_API_KEY;
+  if (!baseUrl) throw new Error("STRIPE_SERVICE_URL is not set");
+  if (!apiKey) throw new Error("STRIPE_SERVICE_API_KEY is not set");
+
   const response = await fetch(
-    `${Bun.env.STRIPE_SERVICE_URL!}/products/${config.productId}`,
+    `${baseUrl}/products/${config.productId}`,
     {
       headers: {
-        "X-API-Key": Bun.env.STRIPE_SERVICE_API_KEY!,
+        "X-API-Key": apiKey,
       },
     }
   );

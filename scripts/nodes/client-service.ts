@@ -9,8 +9,10 @@ export async function main(
     orgId?: string;
   }
 ) {
-  const baseUrl = Bun.env.CLIENT_SERVICE_URL!;
-  const apiKey = Bun.env.CLIENT_SERVICE_API_KEY!;
+  const baseUrl = Bun.env.CLIENT_SERVICE_URL;
+  const apiKey = Bun.env.CLIENT_SERVICE_API_KEY;
+  if (!baseUrl) throw new Error("CLIENT_SERVICE_URL is not set");
+  if (!apiKey) throw new Error("CLIENT_SERVICE_API_KEY is not set");
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     "x-api-key": apiKey,

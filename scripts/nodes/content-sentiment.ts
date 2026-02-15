@@ -6,13 +6,18 @@ export async function main(
     orgId: string;
   }
 ) {
+  const baseUrl = Bun.env.REPLY_QUALIFICATION_URL;
+  const apiKey = Bun.env.REPLY_QUALIFICATION_API_KEY;
+  if (!baseUrl) throw new Error("REPLY_QUALIFICATION_URL is not set");
+  if (!apiKey) throw new Error("REPLY_QUALIFICATION_API_KEY is not set");
+
   const response = await fetch(
-    `${Bun.env.REPLY_QUALIFICATION_URL}/qualify`,
+    `${baseUrl}/qualify`,
     {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": Bun.env.REPLY_QUALIFICATION_API_KEY!,
+        "x-api-key": apiKey,
         "x-clerk-org-id": context.orgId,
       },
       body: JSON.stringify({ content: emailContent, ...config }),

@@ -8,13 +8,18 @@ export async function main(
     metadata?: Record<string, string>;
   }
 ) {
+  const baseUrl = Bun.env.STRIPE_SERVICE_URL;
+  const apiKey = Bun.env.STRIPE_SERVICE_API_KEY;
+  if (!baseUrl) throw new Error("STRIPE_SERVICE_URL is not set");
+  if (!apiKey) throw new Error("STRIPE_SERVICE_API_KEY is not set");
+
   const response = await fetch(
-    `${Bun.env.STRIPE_SERVICE_URL!}/prices/create`,
+    `${baseUrl}/prices/create`,
     {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-API-Key": Bun.env.STRIPE_SERVICE_API_KEY!,
+        "X-API-Key": apiKey,
       },
       body: JSON.stringify(config),
     }

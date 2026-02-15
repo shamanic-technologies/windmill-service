@@ -7,13 +7,18 @@ export async function main(
     eventType?: string;
   }
 ) {
+  const baseUrl = Bun.env.LIFECYCLE_EMAILS_URL;
+  const apiKey = Bun.env.LIFECYCLE_EMAILS_API_KEY;
+  if (!baseUrl) throw new Error("LIFECYCLE_EMAILS_URL is not set");
+  if (!apiKey) throw new Error("LIFECYCLE_EMAILS_API_KEY is not set");
+
   const response = await fetch(
-    `${Bun.env.LIFECYCLE_EMAILS_URL!}/stats`,
+    `${baseUrl}/stats`,
     {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": Bun.env.LIFECYCLE_EMAILS_API_KEY!,
+        "x-api-key": apiKey,
       },
       body: JSON.stringify(config),
     }
