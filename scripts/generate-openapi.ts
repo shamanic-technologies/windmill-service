@@ -14,7 +14,7 @@ const document = generator.generateDocument({
   },
   servers: [
     {
-      url: process.env.SERVICE_URL ?? "https://windmill-service.mcpfactory.org",
+      url: process.env.SERVICE_URL ?? "https://windmill.mcpfactory.org",
     },
   ],
 });

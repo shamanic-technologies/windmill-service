@@ -7,7 +7,7 @@
   },
   "servers": [
     {
-      "url": "https://windmill-service.mcpfactory.org"
+      "url": "https://windmill.mcpfactory.org"
     }
   ],
   "components": {
