@@ -8,7 +8,7 @@ import type { DAG } from "../../lib/dag-validator.js";
  *
  * Steps:
  * 1. Update order status to "paid" via order-service
- * 2. Send purchase confirmation email via lifecycle-emails
+ * 2. Send purchase confirmation email via transactional-email
  */
 export const paymentConfirmation: DAG = {
   nodes: [
@@ -25,7 +25,7 @@ export const paymentConfirmation: DAG = {
     },
     {
       id: "send-confirmation",
-      type: "lifecycle-emails",
+      type: "transactional-email.send",
       config: {
         appId: "polaritycourse",
         eventType: "course-purchase-confirmation",

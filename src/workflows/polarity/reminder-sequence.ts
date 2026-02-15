@@ -8,7 +8,7 @@ import type { DAG } from "../../lib/dag-validator.js";
  *
  * Steps:
  * 1. Fetch all contacts with registration on pi_webinar_001
- * 2. For each contact, send reminder email via lifecycle-emails
+ * 2. For each contact, send reminder email via transactional-email
  */
 export const reminderSequence: DAG = {
   nodes: [
@@ -30,7 +30,7 @@ export const reminderSequence: DAG = {
     },
     {
       id: "send-reminder",
-      type: "lifecycle-emails",
+      type: "transactional-email.send",
       config: {
         appId: "polaritycourse",
       },

@@ -9,7 +9,6 @@ export const NODE_TYPE_REGISTRY: Record<string, string | null> = {
   "outbound-sending": "f/nodes/outbound_sending",
   "brand-intel": "f/nodes/brand_intel",
   "content-sentiment": "f/nodes/content_sentiment",
-  "lifecycle-emails": "f/nodes/lifecycle_emails",
   "client-service": "f/nodes/client_service",
 
   // Stripe service (dot notation)
@@ -28,7 +27,7 @@ export const NODE_TYPE_REGISTRY: Record<string, string | null> = {
   "client.getUsers": "f/nodes/client_get_users",
 
   // Transactional email (dot notation)
-  "lifecycle-email.send": "f/nodes/lifecycle_email_send",
+  "transactional-email.send": "f/nodes/transactional_email_send",
   "transactional-email.getStats": "f/nodes/transactional_email_get_stats",
 
   // App-level logic (inline scripts, no HTTP calls)

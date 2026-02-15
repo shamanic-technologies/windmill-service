@@ -8,7 +8,7 @@ import type { DAG } from "../../lib/dag-validator.js";
  *
  * Steps:
  * 1. Fetch all contacts registered for polaritycourse
- * 2. For each contact, send offer email via lifecycle-emails
+ * 2. For each contact, send offer email via transactional-email
  */
 export const postWebinarOffer: DAG = {
   nodes: [
@@ -30,7 +30,7 @@ export const postWebinarOffer: DAG = {
     },
     {
       id: "send-offer",
-      type: "lifecycle-emails",
+      type: "transactional-email.send",
       config: {
         appId: "polaritycourse",
         eventType: "webinar-post-offer",

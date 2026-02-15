@@ -102,7 +102,7 @@ export const DAG_WITH_WAIT: DAG = {
 export const DAG_WITH_CONDITION: DAG = {
   nodes: [
     { id: "check", type: "condition" },
-    { id: "branch-a", type: "lifecycle-emails" },
+    { id: "branch-a", type: "transactional-email.send" },
     { id: "branch-b", type: "outbound-sending" },
   ],
   edges: [
@@ -118,7 +118,7 @@ export const DAG_WITH_FOREACH: DAG = {
       type: "for-each",
       config: { iterator: "flow_input.contacts", parallel: false },
     },
-    { id: "send", type: "lifecycle-emails" },
+    { id: "send", type: "transactional-email.send" },
   ],
   edges: [{ from: "loop", to: "send" }],
 };
@@ -180,11 +180,11 @@ export const DAG_WITH_CLIENT_NODES: DAG = {
   ],
 };
 
-export const DAG_WITH_LIFECYCLE_EMAIL_SEND: DAG = {
+export const DAG_WITH_TRANSACTIONAL_EMAIL_SEND: DAG = {
   nodes: [
     {
       id: "send-email",
-      type: "lifecycle-email.send",
+      type: "transactional-email.send",
       config: { appId: "test-app", eventType: "welcome" },
     },
   ],
@@ -200,7 +200,7 @@ export const DAG_WITH_MIXED_DOT_NOTATION: DAG = {
     },
     {
       id: "send-welcome",
-      type: "lifecycle-email.send",
+      type: "transactional-email.send",
       config: { appId: "test-app", eventType: "welcome" },
       inputMapping: {
         recipientEmail: "$ref:create-user.output.user.email",
@@ -222,7 +222,7 @@ export const POLARITY_WELCOME_DAG: DAG = {
   nodes: [
     {
       id: "send-welcome",
-      type: "lifecycle-emails",
+      type: "transactional-email.send",
       config: {
         appId: "polaritycourse",
         eventType: "webinar-registration-welcome",

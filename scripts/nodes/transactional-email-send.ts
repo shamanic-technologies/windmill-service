@@ -26,7 +26,7 @@ export async function main(
 
   if (!response.ok) {
     const err = await response.text();
-    throw new Error(`lifecycle-email send failed (${response.status}): ${err}`);
+    throw new Error(`transactional-email send failed (${response.status}): ${err}`);
   }
 
   return response.json();

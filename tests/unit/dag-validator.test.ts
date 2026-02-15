@@ -13,7 +13,7 @@ import {
   DAG_WITH_FOREACH,
   DAG_WITH_STRIPE_NODES,
   DAG_WITH_CLIENT_NODES,
-  DAG_WITH_LIFECYCLE_EMAIL_SEND,
+  DAG_WITH_TRANSACTIONAL_EMAIL_SEND,
   DAG_WITH_MIXED_DOT_NOTATION,
   POLARITY_WELCOME_DAG,
 } from "../helpers/fixtures.js";
@@ -95,8 +95,8 @@ describe("validateDAG", () => {
     expect(result.errors).toHaveLength(0);
   });
 
-  it("accepts a DAG with lifecycle-email.send node type", () => {
-    const result = validateDAG(DAG_WITH_LIFECYCLE_EMAIL_SEND);
+  it("accepts a DAG with transactional-email.send node type", () => {
+    const result = validateDAG(DAG_WITH_TRANSACTIONAL_EMAIL_SEND);
     expect(result.valid).toBe(true);
     expect(result.errors).toHaveLength(0);
   });

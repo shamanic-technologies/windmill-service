@@ -13,7 +13,7 @@ export const postRegistrationWelcome: DAG = {
   nodes: [
     {
       id: "send-welcome",
-      type: "lifecycle-emails",
+      type: "transactional-email.send",
       config: {
         appId: "polaritycourse",
         eventType: "webinar-registration-welcome",

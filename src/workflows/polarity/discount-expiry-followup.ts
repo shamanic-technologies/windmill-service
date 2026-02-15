@@ -12,7 +12,7 @@ import type { DAG } from "../../lib/dag-validator.js";
  * 3. If not paid, send discount-expiring email
  *
  * Note: Filtering logic (paid vs unpaid) is handled at the node script
- * level — the order-service node checks order status and the lifecycle-emails
+ * level — the order-service node checks order status and the transactional-email
  * node uses dedupKey to avoid duplicates.
  */
 export const discountExpiryFollowup: DAG = {
@@ -35,7 +35,7 @@ export const discountExpiryFollowup: DAG = {
     },
     {
       id: "send-followup",
-      type: "lifecycle-emails",
+      type: "transactional-email.send",
       config: {
         appId: "polaritycourse",
         eventType: "webinar-discount-expiring",

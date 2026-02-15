@@ -25,9 +25,9 @@ describe("Polarity workflows", () => {
   describe("Post-Registration Welcome", () => {
     const wf = POLARITY_WORKFLOWS[0];
 
-    it("has a single lifecycle-emails node", () => {
+    it("has a single transactional-email.send node", () => {
       expect(wf.dag.nodes).toHaveLength(1);
-      expect(wf.dag.nodes[0].type).toBe("lifecycle-emails");
+      expect(wf.dag.nodes[0].type).toBe("transactional-email.send");
       expect(wf.dag.edges).toHaveLength(0);
     });
 
@@ -49,7 +49,7 @@ describe("Polarity workflows", () => {
       expect(wf.dag.nodes).toHaveLength(3);
       expect(wf.dag.nodes[0].type).toBe("client-service");
       expect(wf.dag.nodes[1].type).toBe("for-each");
-      expect(wf.dag.nodes[2].type).toBe("lifecycle-emails");
+      expect(wf.dag.nodes[2].type).toBe("transactional-email.send");
     });
 
     it("translates for-each to forloopflow module", () => {
@@ -76,7 +76,7 @@ describe("Polarity workflows", () => {
 
     it("sends webinar-post-offer event", () => {
       const sendNode = wf.dag.nodes.find(
-        (n) => n.type === "lifecycle-emails"
+        (n) => n.type === "transactional-email.send"
       );
       expect(sendNode?.config?.eventType).toBe("webinar-post-offer");
     });
@@ -87,7 +87,7 @@ describe("Polarity workflows", () => {
 
     it("sends webinar-discount-expiring event", () => {
       const sendNode = wf.dag.nodes.find(
-        (n) => n.type === "lifecycle-emails"
+        (n) => n.type === "transactional-email.send"
       );
       expect(sendNode?.config?.eventType).toBe("webinar-discount-expiring");
     });
@@ -99,7 +99,7 @@ describe("Polarity workflows", () => {
     it("updates order then sends confirmation", () => {
       expect(wf.dag.nodes).toHaveLength(2);
       expect(wf.dag.nodes[0].type).toBe("order-service");
-      expect(wf.dag.nodes[1].type).toBe("lifecycle-emails");
+      expect(wf.dag.nodes[1].type).toBe("transactional-email.send");
       expect(wf.dag.edges).toHaveLength(1);
       expect(wf.dag.edges[0]).toEqual({
         from: "update-order",
@@ -109,7 +109,7 @@ describe("Polarity workflows", () => {
 
     it("sends course-purchase-confirmation event", () => {
       const sendNode = wf.dag.nodes.find(
-        (n) => n.type === "lifecycle-emails"
+        (n) => n.type === "transactional-email.send"
       );
       expect(sendNode?.config?.eventType).toBe("course-purchase-confirmation");
     });

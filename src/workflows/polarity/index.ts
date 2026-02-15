@@ -29,7 +29,7 @@ export const POLARITY_WORKFLOWS: WorkflowDefinition[] = [
   {
     name: "Reminder Sequence",
     description:
-      "Scheduled email reminders: J-7, J-1, H-1 before the webinar. Fetches all registered contacts and sends via lifecycle-emails.",
+      "Scheduled email reminders: J-7, J-1, H-1 before the webinar. Fetches all registered contacts and sends via transactional-email.",
     dag: reminderSequence,
   },
   {
