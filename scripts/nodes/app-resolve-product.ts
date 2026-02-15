@@ -1,22 +1,28 @@
-// Windmill node script — app-level logic, resolves a product to its Stripe product ID
-// No external HTTP call — reads from config passed in the DAG
+// Windmill node script — resolves a product by fetching live from Stripe
 export async function main(
   config: {
-    productRegistry: Record<string, { stripeProductId: string; name: string }>;
-    productKey: string;
+    productId: string;
   }
 ) {
-  const product = config.productRegistry[config.productKey];
+  const response = await fetch(
+    `${Bun.env.STRIPE_SERVICE_URL!}/products/${config.productId}`,
+    {
+      headers: {
+        "X-API-Key": Bun.env.STRIPE_SERVICE_API_KEY!,
+      },
+    }
+  );
 
-  if (!product) {
-    throw new Error(
-      `app.resolveProduct: unknown product key "${config.productKey}". Available: ${Object.keys(config.productRegistry).join(", ")}`
-    );
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`app.resolveProduct: failed to fetch product "${config.productId}" (${response.status}): ${err}`);
   }
 
+  const data = await response.json() as { productId: string; name: string; description?: string };
+
   return {
-    stripeProductId: product.stripeProductId,
-    name: product.name,
-    productKey: config.productKey,
+    stripeProductId: data.productId,
+    name: data.name,
+    description: data.description,
   };
 }

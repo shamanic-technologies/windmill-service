@@ -1,23 +1,40 @@
-// Windmill node script — app-level logic, resolves a discount/coupon for a product+context combo
-// No external HTTP call — reads from config passed in the DAG
+// Windmill node script — resolves a coupon/discount by fetching live from Stripe
 export async function main(
   config: {
-    discountRegistry: Record<string, { stripeCouponId: string; name: string; percentOff?: number }>;
-    discountKey: string;
+    couponId: string;
   }
 ) {
-  const discount = config.discountRegistry[config.discountKey];
+  const response = await fetch(
+    `${Bun.env.STRIPE_SERVICE_URL!}/coupons/${config.couponId}`,
+    {
+      headers: {
+        "X-API-Key": Bun.env.STRIPE_SERVICE_API_KEY!,
+      },
+    }
+  );
 
-  if (!discount) {
-    throw new Error(
-      `app.resolveDiscount: unknown discount key "${config.discountKey}". Available: ${Object.keys(config.discountRegistry).join(", ")}`
-    );
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`app.resolveDiscount: failed to fetch coupon "${config.couponId}" (${response.status}): ${err}`);
   }
 
+  const data = await response.json() as {
+    couponId: string;
+    name: string | null;
+    percentOff: number | null;
+    amountOffInCents: number | null;
+    currency: string | null;
+    duration: string;
+    valid: boolean;
+  };
+
   return {
-    stripeCouponId: discount.stripeCouponId,
-    name: discount.name,
-    percentOff: discount.percentOff,
-    discountKey: config.discountKey,
+    stripeCouponId: data.couponId,
+    name: data.name,
+    percentOff: data.percentOff,
+    amountOffInCents: data.amountOffInCents,
+    currency: data.currency,
+    duration: data.duration,
+    valid: data.valid,
   };
 }
