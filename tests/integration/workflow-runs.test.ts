@@ -125,13 +125,14 @@ describe("POST /workflows/by-name/:name/execute", () => {
     mockRunFlow.mockClear();
   });
 
-  it("executes a workflow by name", async () => {
+  it("executes a workflow by appId + name", async () => {
     mockWorkflows.push({
       id: "wf-1",
-      orgId: "org-1",
+      appId: "kevinlourd-com",
+      orgId: "kevinlourd-com",
       name: "newsletter-subscribe",
       status: "active",
-      windmillFlowPath: "f/workflows/org_1/newsletter_subscribe",
+      windmillFlowPath: "f/workflows/kevinlourd-com/newsletter_subscribe",
       windmillWorkspace: "prod",
       dag: VALID_LINEAR_DAG,
     });
@@ -139,7 +140,7 @@ describe("POST /workflows/by-name/:name/execute", () => {
     const res = await request
       .post("/workflows/by-name/newsletter-subscribe/execute")
       .set(AUTH)
-      .send({ orgId: "org-1", inputs: { email: "test@example.com" } });
+      .send({ appId: "kevinlourd-com", inputs: { email: "test@example.com" } });
 
     expect(res.status).toBe(201);
     expect(res.body.status).toBe("queued");
@@ -151,25 +152,50 @@ describe("POST /workflows/by-name/:name/execute", () => {
     const res = await request
       .post("/workflows/by-name/nonexistent/execute")
       .set(AUTH)
-      .send({ orgId: "org-1" });
+      .send({ appId: "kevinlourd-com" });
 
     expect(res.status).toBe(404);
     expect(res.body.error).toContain("nonexistent");
   });
 
-  it("requires orgId in body", async () => {
+  it("requires appId in body", async () => {
     const res = await request
       .post("/workflows/by-name/test-flow/execute")
       .set(AUTH)
-      .send({ inputs: {} }); // missing orgId
+      .send({ inputs: {} }); // missing appId
 
     expect(res.status).toBe(400);
+  });
+
+  it("accepts optional orgId for user context", async () => {
+    mockWorkflows.push({
+      id: "wf-1",
+      appId: "kevinlourd-com",
+      orgId: "kevinlourd-com",
+      name: "newsletter-subscribe",
+      status: "active",
+      windmillFlowPath: "f/workflows/kevinlourd-com/newsletter_subscribe",
+      windmillWorkspace: "prod",
+      dag: VALID_LINEAR_DAG,
+    });
+
+    const res = await request
+      .post("/workflows/by-name/newsletter-subscribe/execute")
+      .set(AUTH)
+      .send({
+        appId: "kevinlourd-com",
+        orgId: "user-org-123",
+        inputs: { email: "test@example.com" },
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.orgId).toBe("user-org-123");
   });
 
   it("requires authentication", async () => {
     const res = await request
       .post("/workflows/by-name/test-flow/execute")
-      .send({ orgId: "org-1" });
+      .send({ appId: "kevinlourd-com" });
 
     expect(res.status).toBe(401);
   });

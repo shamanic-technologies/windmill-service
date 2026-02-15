@@ -166,12 +166,12 @@ describe("PUT /workflows/deploy", () => {
     mockDbRows.length = 0;
   });
 
-  it("creates new workflows", async () => {
+  it("creates new workflows scoped by appId", async () => {
     const res = await request
       .put("/workflows/deploy")
       .set(AUTH)
       .send({
-        orgId: "org-1",
+        appId: "kevinlourd-com",
         workflows: [
           {
             name: "newsletter-subscribe",
@@ -191,12 +191,13 @@ describe("PUT /workflows/deploy", () => {
   it("updates existing workflows (idempotent)", async () => {
     mockDbRows.push({
       id: "wf-existing",
-      orgId: "org-1",
+      appId: "kevinlourd-com",
+      orgId: "kevinlourd-com",
       name: "newsletter-subscribe",
       description: "Old description",
       status: "active",
       dag: DAG_WITH_TRANSACTIONAL_EMAIL_SEND,
-      windmillFlowPath: "f/workflows/org-1/newsletter_subscribe",
+      windmillFlowPath: "f/workflows/kevinlourd-com/newsletter_subscribe",
       windmillWorkspace: "prod",
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -206,7 +207,7 @@ describe("PUT /workflows/deploy", () => {
       .put("/workflows/deploy")
       .set(AUTH)
       .send({
-        orgId: "org-1",
+        appId: "kevinlourd-com",
         workflows: [
           {
             name: "newsletter-subscribe",
@@ -226,7 +227,7 @@ describe("PUT /workflows/deploy", () => {
       .put("/workflows/deploy")
       .set(AUTH)
       .send({
-        orgId: "org-1",
+        appId: "kevinlourd-com",
         workflows: [
           { name: "good-flow", dag: VALID_LINEAR_DAG },
           { name: "bad-flow", dag: DAG_WITH_UNKNOWN_TYPE },
@@ -241,7 +242,7 @@ describe("PUT /workflows/deploy", () => {
 
   it("requires authentication", async () => {
     const res = await request.put("/workflows/deploy").send({
-      orgId: "org-1",
+      appId: "kevinlourd-com",
       workflows: [{ name: "test", dag: VALID_LINEAR_DAG }],
     });
 
@@ -252,7 +253,7 @@ describe("PUT /workflows/deploy", () => {
     const res = await request
       .put("/workflows/deploy")
       .set(AUTH)
-      .send({ orgId: "org-1" }); // missing workflows
+      .send({ appId: "kevinlourd-com" }); // missing workflows
 
     expect(res.status).toBe(400);
   });

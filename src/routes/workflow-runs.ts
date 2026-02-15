@@ -25,13 +25,13 @@ router.post(
     try {
       const body = ExecuteByNameSchema.parse(req.body);
 
-      // Look up workflow by (orgId + name)
+      // Look up workflow by (appId + name)
       const [workflow] = await db
         .select()
         .from(workflows)
         .where(
           and(
-            eq(workflows.orgId, body.orgId),
+            eq(workflows.appId, body.appId),
             eq(workflows.name, req.params.name),
             rawSql`${workflows.status} != 'deleted'`
           )
@@ -39,7 +39,7 @@ router.post(
 
       if (!workflow) {
         res.status(404).json({
-          error: `Workflow "${req.params.name}" not found for org "${body.orgId}"`,
+          error: `Workflow "${req.params.name}" not found for app "${body.appId}"`,
         });
         return;
       }
@@ -73,11 +73,12 @@ router.post(
       }
 
       // Create workflow run in DB
+      // Use provided orgId (user context) or fall back to workflow's orgId
       const [run] = await db
         .insert(workflowRuns)
         .values({
           workflowId: workflow.id,
-          orgId: workflow.orgId,
+          orgId: body.orgId ?? workflow.orgId,
           campaignId: workflow.campaignId,
           subrequestId: workflow.subrequestId,
           runId: body.runId,

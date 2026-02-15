@@ -47,6 +47,10 @@
             "type": "string",
             "format": "uuid"
           },
+          "appId": {
+            "type": "string",
+            "nullable": true
+          },
           "orgId": {
             "type": "string"
           },
@@ -91,6 +95,7 @@
         },
         "required": [
           "id",
+          "appId",
           "orgId",
           "brandId",
           "campaignId",
@@ -415,7 +420,7 @@
       "DeployWorkflowsRequest": {
         "type": "object",
         "properties": {
-          "orgId": {
+          "appId": {
             "type": "string",
             "minLength": 1
           },
@@ -428,16 +433,19 @@
           }
         },
         "required": [
-          "orgId",
+          "appId",
           "workflows"
         ]
       },
       "ExecuteByNameRequest": {
         "type": "object",
         "properties": {
-          "orgId": {
+          "appId": {
             "type": "string",
             "minLength": 1
+          },
+          "orgId": {
+            "type": "string"
           },
           "inputs": {
             "type": "object",
@@ -450,7 +458,7 @@
           }
         },
         "required": [
-          "orgId"
+          "appId"
         ]
       }
     },

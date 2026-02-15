@@ -66,6 +66,7 @@ export const UpdateWorkflowSchema = z
 export const WorkflowResponseSchema = z
   .object({
     id: z.string().uuid(),
+    appId: z.string().nullable(),
     orgId: z.string(),
     brandId: z.string().nullable(),
     campaignId: z.string().nullable(),
@@ -131,7 +132,7 @@ export const DeployWorkflowItemSchema = z
 
 export const DeployWorkflowsSchema = z
   .object({
-    orgId: z.string().min(1),
+    appId: z.string().min(1),
     workflows: z.array(DeployWorkflowItemSchema).min(1),
   })
   .openapi("DeployWorkflowsRequest");
@@ -154,7 +155,8 @@ export const DeployWorkflowsResponseSchema = z
 
 export const ExecuteByNameSchema = z
   .object({
-    orgId: z.string().min(1),
+    appId: z.string().min(1),
+    orgId: z.string().optional(),
     inputs: z.record(z.unknown()).optional(),
     runId: z.string().optional(),
   })

@@ -22,12 +22,12 @@ function formatWorkflow(w: typeof workflows.$inferSelect) {
   };
 }
 
-function generateFlowPath(orgId: string, name: string): string {
+function generateFlowPath(scope: string, name: string): string {
   const slug = name
     .toLowerCase()
     .replace(/[^a-z0-9]+/g, "_")
     .replace(/^_|_$/g, "");
-  return `f/workflows/${orgId}/${slug}`;
+  return `f/workflows/${scope}/${slug}`;
 }
 
 // POST /workflows — Create a new workflow
@@ -90,7 +90,7 @@ router.post("/workflows", requireApiKey, async (req, res) => {
   }
 });
 
-// PUT /workflows/deploy — Batch upsert workflows by (orgId + name)
+// PUT /workflows/deploy — Batch upsert workflows by (appId + name)
 router.put("/workflows/deploy", requireApiKey, async (req, res) => {
   try {
     const body = DeployWorkflowsSchema.parse(req.body);
@@ -113,16 +113,16 @@ router.put("/workflows/deploy", requireApiKey, async (req, res) => {
     for (const wf of body.workflows) {
       const dag = wf.dag as DAG;
       const openFlow = dagToOpenFlow(dag, wf.name);
-      const flowPath = generateFlowPath(body.orgId, wf.name);
+      const flowPath = generateFlowPath(body.appId, wf.name);
       const client = getWindmillClient();
 
-      // Check if workflow already exists for this (orgId, name)
+      // Check if workflow already exists for this (appId, name)
       const [existing] = await db
         .select()
         .from(workflows)
         .where(
           and(
-            eq(workflows.orgId, body.orgId),
+            eq(workflows.appId, body.appId),
             eq(workflows.name, wf.name),
             rawSql`${workflows.status} != 'deleted'`
           )
@@ -173,7 +173,8 @@ router.put("/workflows/deploy", requireApiKey, async (req, res) => {
         const [created] = await db
           .insert(workflows)
           .values({
-            orgId: body.orgId,
+            appId: body.appId,
+            orgId: body.appId,
             name: wf.name,
             description: wf.description,
             dag: wf.dag,
