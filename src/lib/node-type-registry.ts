@@ -47,6 +47,9 @@ export const NODE_TYPE_REGISTRY: Record<string, string | null> = {
   "google-ads": "f/nodes/google_ads",
   "meta-ads": "f/nodes/meta_ads",
 
+  // Generic HTTP call — works with any microservice
+  "http.call": "f/nodes/http_call",
+
   // Native Windmill constructs
   wait: null,
   condition: null,

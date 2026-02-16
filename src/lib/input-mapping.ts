@@ -33,11 +33,14 @@ export function buildInputTransforms(
           expr = path;
         } else {
           // "node-id.output.field" → "results.node_id.field"
+          // "node-id.output" → "results.node_id" (whole output)
           const parts = path.split(".");
           const nodeId = parts[0].replace(/-/g, "_");
           // Skip "output" part if present
           const rest = parts.slice(1).filter((p) => p !== "output");
-          expr = `results.${nodeId}.${rest.join(".")}`;
+          expr = rest.length > 0
+            ? `results.${nodeId}.${rest.join(".")}`
+            : `results.${nodeId}`;
         }
 
         transforms[key] = { type: "javascript", expr };

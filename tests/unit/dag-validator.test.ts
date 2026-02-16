@@ -16,6 +16,8 @@ import {
   DAG_WITH_TRANSACTIONAL_EMAIL_SEND,
   DAG_WITH_MIXED_DOT_NOTATION,
   POLARITY_WELCOME_DAG,
+  DAG_WITH_HTTP_CALL,
+  DAG_WITH_HTTP_CALL_CHAIN,
 } from "../helpers/fixtures.js";
 
 describe("validateDAG", () => {
@@ -103,6 +105,18 @@ describe("validateDAG", () => {
 
   it("accepts a DAG mixing dot-notation and app.* node types", () => {
     const result = validateDAG(DAG_WITH_MIXED_DOT_NOTATION);
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it("accepts a DAG with http.call node type", () => {
+    const result = validateDAG(DAG_WITH_HTTP_CALL);
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it("accepts a DAG with chained http.call nodes", () => {
+    const result = validateDAG(DAG_WITH_HTTP_CALL_CHAIN);
     expect(result.valid).toBe(true);
     expect(result.errors).toHaveLength(0);
   });

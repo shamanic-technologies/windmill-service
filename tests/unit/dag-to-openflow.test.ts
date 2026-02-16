@@ -6,6 +6,8 @@ import {
   DAG_WITH_CONDITION,
   DAG_WITH_FOREACH,
   POLARITY_WELCOME_DAG,
+  DAG_WITH_HTTP_CALL,
+  DAG_WITH_HTTP_CALL_CHAIN,
 } from "../helpers/fixtures.js";
 
 describe("dagToOpenFlow", () => {
@@ -114,6 +116,46 @@ describe("dagToOpenFlow", () => {
         expr: "flow_input.email",
       });
       expect(transforms.config).toBeUndefined();
+    }
+  });
+
+  it("translates http.call node to script module with config as individual transforms", () => {
+    const result = dagToOpenFlow(DAG_WITH_HTTP_CALL, "HTTP Call Test");
+
+    expect(result.value.modules).toHaveLength(1);
+    const mod = result.value.modules[0];
+    expect(mod.id).toBe("get-product");
+    expect(mod.value.type).toBe("script");
+
+    if (mod.value.type === "script") {
+      expect(mod.value.path).toBe("f/nodes/http_call");
+      const transforms = mod.value.input_transforms as Record<
+        string,
+        { type: string; value?: unknown; expr?: string }
+      >;
+      expect(transforms.service).toEqual({ type: "static", value: "stripe" });
+      expect(transforms.method).toEqual({ type: "static", value: "GET" });
+      expect(transforms.path).toEqual({ type: "static", value: "/products/prod_123" });
+    }
+  });
+
+  it("translates http.call chain with $ref input mapping", () => {
+    const result = dagToOpenFlow(DAG_WITH_HTTP_CALL_CHAIN, "HTTP Chain");
+
+    expect(result.value.modules).toHaveLength(2);
+    expect(result.value.modules[0].id).toBe("create-user");
+    expect(result.value.modules[1].id).toBe("send-welcome");
+
+    const sendMod = result.value.modules[1];
+    if (sendMod.value.type === "script") {
+      const transforms = sendMod.value.input_transforms as Record<
+        string,
+        { type: string; value?: unknown; expr?: string }
+      >;
+      expect(transforms.service).toEqual({ type: "static", value: "transactional-email" });
+      expect(transforms.method).toEqual({ type: "static", value: "POST" });
+      expect(transforms.path).toEqual({ type: "static", value: "/send" });
+      expect(transforms.body).toEqual({ type: "javascript", expr: "results.create_user" });
     }
   });
 
