@@ -51,14 +51,15 @@ router.post(
         return;
       }
 
-      // Run in Windmill
+      // Run in Windmill — inject appId so nodes can access it via flow_input.appId
       let windmillJobId: string | null = null;
       const client = getWindmillClient();
       if (client) {
         try {
+          const flowInputs = { ...body.inputs, appId: body.appId };
           windmillJobId = await client.runFlow(
             workflow.windmillFlowPath,
-            body.inputs ?? {}
+            flowInputs
           );
         } catch (err) {
           console.error(
@@ -123,14 +124,15 @@ router.post("/workflows/:id/execute", requireApiKey, async (req, res) => {
       return;
     }
 
-    // Run in Windmill
+    // Run in Windmill — inject appId so nodes can access it via flow_input.appId
     let windmillJobId: string | null = null;
     const client = getWindmillClient();
     if (client) {
       try {
+        const flowInputs = { ...body.inputs, ...(workflow.appId ? { appId: workflow.appId } : {}) };
         windmillJobId = await client.runFlow(
           workflow.windmillFlowPath,
-          body.inputs ?? {}
+          flowInputs
         );
       } catch (err) {
         console.error("[workflow-runs] Failed to run flow in Windmill:", err);

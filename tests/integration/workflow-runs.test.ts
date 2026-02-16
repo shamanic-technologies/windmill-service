@@ -109,6 +109,29 @@ describe("POST /workflows/:id/execute", () => {
     expect(mockRunFlow).toHaveBeenCalled();
   });
 
+  it("forwards workflow appId into Windmill flow inputs", async () => {
+    mockWorkflows.push({
+      id: "wf-1",
+      appId: "kevinlourd-com",
+      orgId: "org-1",
+      name: "Test Flow",
+      status: "active",
+      windmillFlowPath: "f/workflows/org_1/test_flow",
+      windmillWorkspace: "prod",
+      dag: VALID_LINEAR_DAG,
+    });
+
+    await request
+      .post("/workflows/wf-1/execute")
+      .set(AUTH)
+      .send({ inputs: { email: "user@test.com" } });
+
+    expect(mockRunFlow).toHaveBeenCalledWith(
+      "f/workflows/org_1/test_flow",
+      expect.objectContaining({ appId: "kevinlourd-com", email: "user@test.com" }),
+    );
+  });
+
   it("requires authentication", async () => {
     const res = await request
       .post("/workflows/wf-1/execute")
@@ -146,6 +169,52 @@ describe("POST /workflows/by-name/:name/execute", () => {
     expect(res.body.status).toBe("queued");
     expect(res.body.windmillJobId).toBe("job-uuid-123");
     expect(mockRunFlow).toHaveBeenCalled();
+  });
+
+  it("forwards appId into Windmill flow inputs", async () => {
+    mockWorkflows.push({
+      id: "wf-1",
+      appId: "kevinlourd-com",
+      orgId: "kevinlourd-com",
+      name: "create-user-flow",
+      status: "active",
+      windmillFlowPath: "f/workflows/kevinlourd_com/create_user_flow",
+      windmillWorkspace: "prod",
+      dag: VALID_LINEAR_DAG,
+    });
+
+    await request
+      .post("/workflows/by-name/create-user-flow/execute")
+      .set(AUTH)
+      .send({ appId: "kevinlourd-com", inputs: { email: "user@test.com" } });
+
+    expect(mockRunFlow).toHaveBeenCalledWith(
+      "f/workflows/kevinlourd_com/create_user_flow",
+      expect.objectContaining({ appId: "kevinlourd-com", email: "user@test.com" }),
+    );
+  });
+
+  it("includes appId in flow inputs even without other inputs", async () => {
+    mockWorkflows.push({
+      id: "wf-1",
+      appId: "kevinlourd-com",
+      orgId: "kevinlourd-com",
+      name: "simple-flow",
+      status: "active",
+      windmillFlowPath: "f/workflows/kevinlourd_com/simple_flow",
+      windmillWorkspace: "prod",
+      dag: VALID_LINEAR_DAG,
+    });
+
+    await request
+      .post("/workflows/by-name/simple-flow/execute")
+      .set(AUTH)
+      .send({ appId: "kevinlourd-com" });
+
+    expect(mockRunFlow).toHaveBeenCalledWith(
+      "f/workflows/kevinlourd_com/simple_flow",
+      expect.objectContaining({ appId: "kevinlourd-com" }),
+    );
   });
 
   it("returns 404 for unknown workflow name", async () => {
