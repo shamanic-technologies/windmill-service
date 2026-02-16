@@ -2,7 +2,7 @@
   "openapi": "3.0.0",
   "info": {
     "title": "Windmill Service",
-    "description": "Workflow orchestration service wrapping Windmill. Translates internal DAG format to Windmill OpenFlow, manages workflow lifecycle, and tracks executions.",
+    "description": "Workflow orchestration service. Register DAG workflows once, execute them by name with runtime inputs.\n\n## Quick Start\n\n**Step 1 — Deploy your workflows (once, at app startup):**\n```\nPUT /workflows/deploy\n{ \"appId\": \"my-app\", \"workflows\": [{ \"name\": \"my-flow\", \"dag\": { ... } }] }\n```\nThis is idempotent — safe to call on every cold start.\n\n**Step 2 — Execute by name (each time an event occurs):**\n```\nPOST /workflows/by-name/my-flow/execute\n{ \"appId\": \"my-app\", \"inputs\": { \"email\": \"user@example.com\" } }\n```\nReturns a run ID. Poll `GET /workflow-runs/{id}` for status and result.\n\n## DAG Format\n\nA DAG has `nodes` (steps) and `edges` (execution order).\n\n**Recommended node type: `http.call`** — calls any microservice by name:\n```json\n{\n  \"id\": \"create-user\",\n  \"type\": \"http.call\",\n  \"config\": { \"service\": \"client\", \"method\": \"POST\", \"path\": \"/users\" },\n  \"inputMapping\": { \"body\": \"$ref:flow_input.userData\" }\n}\n```\nThe service name maps to env vars `{NAME}_SERVICE_URL` and `{NAME}_SERVICE_API_KEY`.\nTo discover available services and their endpoints, use the API Registry.\n\n## Input Mapping ($ref syntax)\n\nUse `inputMapping` to pass data between nodes:\n- `$ref:flow_input.field` — from the workflow execution inputs\n- `$ref:node-id.output.field` — from a previous node's output\n\n## Features\n\n- Automatic retries (3 attempts, 5s apart) on each node\n- Async execution with status polling\n- Topological ordering — nodes run in dependency order\n- Native constructs: `wait` (delay), `condition` (branching), `for-each` (loops)",
     "version": "1.0.0"
   },
   "servers": [
@@ -45,14 +45,17 @@
         "properties": {
           "id": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "description": "Workflow UUID. Not needed for execution — use name + appId instead."
           },
           "appId": {
             "type": "string",
-            "nullable": true
+            "nullable": true,
+            "description": "App ID (set via deploy endpoint)."
           },
           "orgId": {
-            "type": "string"
+            "type": "string",
+            "description": "Organization ID."
           },
           "brandId": {
             "type": "string",
@@ -67,24 +70,29 @@
             "nullable": true
           },
           "name": {
-            "type": "string"
+            "type": "string",
+            "description": "Workflow name. Use this with appId to execute via /workflows/by-name/{name}/execute."
           },
           "description": {
             "type": "string",
             "nullable": true
           },
           "dag": {
-            "nullable": true
+            "nullable": true,
+            "description": "The DAG definition as submitted."
           },
           "windmillFlowPath": {
             "type": "string",
-            "nullable": true
+            "nullable": true,
+            "description": "Internal Windmill flow path (managed automatically)."
           },
           "windmillWorkspace": {
-            "type": "string"
+            "type": "string",
+            "description": "Windmill workspace (managed automatically)."
           },
           "status": {
-            "type": "string"
+            "type": "string",
+            "description": "Workflow status: active or deleted."
           },
           "createdAt": {
             "type": "string"
@@ -128,23 +136,27 @@
         "properties": {
           "id": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "description": "Unique identifier for this node within the DAG. Used in edges and $ref input mappings."
           },
           "type": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "description": "Node type. Use \"http.call\" to call any microservice (recommended), or a specific node type. http.call config requires: service (name, e.g. \"stripe\"), method (HTTP verb), path (endpoint path). Other types: wait, condition, for-each (native constructs), or legacy named types like stripe.createProduct, client.createUser, transactional-email.send."
           },
           "config": {
             "type": "object",
             "additionalProperties": {
               "nullable": true
-            }
+            },
+            "description": "Static parameters passed to the node. For http.call: { service, method, path, body?, query? }. For wait: { seconds }. For for-each: { iterator, parallel?, skipFailures? }. Each key becomes a direct parameter of the underlying script."
           },
           "inputMapping": {
             "type": "object",
             "additionalProperties": {
               "type": "string"
-            }
+            },
+            "description": "Dynamic input references using $ref syntax. Use \"$ref:flow_input.fieldName\" for workflow execution inputs, or \"$ref:node-id.output.fieldName\" for a previous node's output. Keys in inputMapping override same-named keys in config."
           }
         },
         "required": [
@@ -157,14 +169,17 @@
         "properties": {
           "from": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "description": "Source node ID — this node runs first."
           },
           "to": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "description": "Target node ID — runs after the source completes."
           },
           "condition": {
-            "type": "string"
+            "type": "string",
+            "description": "JavaScript expression for conditional execution (only used when source node type is \"condition\"). Example: \"result.status === 'active'\""
           }
         },
         "required": [
@@ -180,13 +195,15 @@
             "items": {
               "$ref": "#/components/schemas/DAGNode"
             },
-            "minItems": 1
+            "minItems": 1,
+            "description": "The steps of the workflow. Must contain at least one node."
           },
           "edges": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/DAGEdge"
-            }
+            },
+            "description": "Execution order between nodes. Empty array for single-node workflows."
           }
         },
         "required": [
@@ -199,23 +216,29 @@
         "properties": {
           "orgId": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "description": "Organization ID that owns this workflow."
           },
           "brandId": {
-            "type": "string"
+            "type": "string",
+            "description": "Optional brand ID for scoping."
           },
           "campaignId": {
-            "type": "string"
+            "type": "string",
+            "description": "Optional campaign ID for scoping."
           },
           "subrequestId": {
-            "type": "string"
+            "type": "string",
+            "description": "Optional subrequest ID for cost tracking."
           },
           "name": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "description": "Workflow name. Must be unique within the orgId. Used to execute by name later."
           },
           "description": {
-            "type": "string"
+            "type": "string",
+            "description": "Human-readable description of what this workflow does."
           },
           "dag": {
             "$ref": "#/components/schemas/DAG"
@@ -276,7 +299,8 @@
         "properties": {
           "id": {
             "type": "string",
-            "format": "uuid"
+            "format": "uuid",
+            "description": "Run UUID. Use this to poll status via GET /workflow-runs/{id}."
           },
           "workflowId": {
             "type": "string",
@@ -296,27 +320,33 @@
           },
           "runId": {
             "type": "string",
-            "nullable": true
+            "nullable": true,
+            "description": "External run ID (if provided at execution time)."
           },
           "windmillJobId": {
             "type": "string",
-            "nullable": true
+            "nullable": true,
+            "description": "Internal Windmill job ID (managed automatically)."
           },
           "windmillWorkspace": {
             "type": "string"
           },
           "status": {
-            "type": "string"
+            "type": "string",
+            "description": "Run status: queued, running, completed, failed, or cancelled."
           },
           "inputs": {
-            "nullable": true
+            "nullable": true,
+            "description": "The inputs that were passed at execution time."
           },
           "result": {
-            "nullable": true
+            "nullable": true,
+            "description": "Workflow result (available when status is completed). Contains the output of the last node."
           },
           "error": {
             "type": "string",
-            "nullable": true
+            "nullable": true,
+            "description": "Error message (available when status is failed)."
           },
           "startedAt": {
             "type": "string",
@@ -353,10 +383,12 @@
             "type": "object",
             "additionalProperties": {
               "nullable": true
-            }
+            },
+            "description": "Runtime inputs for the workflow. Accessible in nodes via $ref:flow_input.fieldName."
           },
           "runId": {
-            "type": "string"
+            "type": "string",
+            "description": "Optional external run ID for cost tracking via runs-service."
           }
         }
       },
@@ -403,10 +435,12 @@
         "properties": {
           "name": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "description": "Workflow name. Must be unique within the appId. Used to execute via /workflows/by-name/{name}/execute."
           },
           "description": {
-            "type": "string"
+            "type": "string",
+            "description": "Human-readable description."
           },
           "dag": {
             "$ref": "#/components/schemas/DAG"
@@ -422,14 +456,16 @@
         "properties": {
           "appId": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "description": "Your application identifier. Workflows are scoped to (appId + name). Use the same appId when executing. This is idempotent — existing workflows with the same name are updated."
           },
           "workflows": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/DeployWorkflowItem"
             },
-            "minItems": 1
+            "minItems": 1,
+            "description": "The workflows to deploy."
           }
         },
         "required": [
@@ -442,19 +478,23 @@
         "properties": {
           "appId": {
             "type": "string",
-            "minLength": 1
+            "minLength": 1,
+            "description": "Must match the appId used during deploy."
           },
           "orgId": {
-            "type": "string"
+            "type": "string",
+            "description": "Organization ID for this execution (overrides workflow's orgId if set)."
           },
           "inputs": {
             "type": "object",
             "additionalProperties": {
               "nullable": true
-            }
+            },
+            "description": "Runtime inputs for the workflow. Accessible in nodes via $ref:flow_input.fieldName."
           },
           "runId": {
-            "type": "string"
+            "type": "string",
+            "description": "Optional external run ID for cost tracking via runs-service."
           }
         },
         "required": [
@@ -825,6 +865,7 @@
     "/workflow-runs/{id}": {
       "get": {
         "summary": "Get a workflow run",
+        "description": "Returns the current status and result of a workflow execution. If still running, polls the engine for the latest status before responding.",
         "tags": [
           "Workflow Runs"
         ],
@@ -968,6 +1009,7 @@
     "/workflows/deploy": {
       "put": {
         "summary": "Deploy (upsert) workflows by name",
+        "description": "Idempotent: creates new workflows or updates existing ones matched by (appId + name). Call this at app startup to register all your workflows. After deploying, execute workflows via POST /workflows/by-name/{name}/execute.",
         "tags": [
           "Workflows"
         ],
@@ -1013,6 +1055,7 @@
     "/workflows/by-name/{name}/execute": {
       "post": {
         "summary": "Execute a workflow by name",
+        "description": "Starts an async execution of a previously deployed workflow. Returns a run object with an ID — poll GET /workflow-runs/{id} for status (queued → running → completed/failed). Pass runtime data via inputs (accessible in nodes as $ref:flow_input.fieldName).",
         "tags": [
           "Workflow Runs"
         ],

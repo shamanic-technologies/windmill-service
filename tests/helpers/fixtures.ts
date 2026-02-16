@@ -218,6 +218,43 @@ export const DAG_WITH_MIXED_DOT_NOTATION: DAG = {
   ],
 };
 
+export const DAG_WITH_HTTP_CALL: DAG = {
+  nodes: [
+    {
+      id: "get-product",
+      type: "http.call",
+      config: { service: "stripe", method: "GET", path: "/products/prod_123" },
+    },
+  ],
+  edges: [],
+};
+
+export const DAG_WITH_HTTP_CALL_CHAIN: DAG = {
+  nodes: [
+    {
+      id: "create-user",
+      type: "http.call",
+      config: { service: "client", method: "POST", path: "/users" },
+      inputMapping: {
+        body: "$ref:flow_input.userData",
+      },
+    },
+    {
+      id: "send-welcome",
+      type: "http.call",
+      config: {
+        service: "transactional-email",
+        method: "POST",
+        path: "/send",
+      },
+      inputMapping: {
+        body: "$ref:create-user.output",
+      },
+    },
+  ],
+  edges: [{ from: "create-user", to: "send-welcome" }],
+};
+
 export const POLARITY_WELCOME_DAG: DAG = {
   nodes: [
     {
