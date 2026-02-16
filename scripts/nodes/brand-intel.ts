@@ -6,11 +6,16 @@ export async function main(
     brandId: string;
   }
 ) {
+  const baseUrl = Bun.env.BRAND_SERVICE_URL;
+  const apiKey = Bun.env.BRAND_SERVICE_API_KEY;
+  if (!baseUrl) throw new Error("BRAND_SERVICE_URL is not set");
+  if (!apiKey) throw new Error("BRAND_SERVICE_API_KEY is not set");
+
   const response = await fetch(
-    `${Bun.env.BRAND_SERVICE_URL}/brands/${context.brandId}`,
+    `${baseUrl}/brands/${context.brandId}`,
     {
       headers: {
-        "x-api-key": Bun.env.BRAND_SERVICE_API_KEY!,
+        "x-api-key": apiKey,
         "x-clerk-org-id": context.orgId,
       },
     }

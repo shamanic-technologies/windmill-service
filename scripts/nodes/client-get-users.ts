@@ -4,15 +4,20 @@ export async function main(
   limit?: number,
   offset?: number,
 ) {
+  const baseUrl = Bun.env.CLIENT_SERVICE_URL;
+  const apiKey = Bun.env.CLIENT_SERVICE_API_KEY;
+  if (!baseUrl) throw new Error("CLIENT_SERVICE_URL is not set");
+  if (!apiKey) throw new Error("CLIENT_SERVICE_API_KEY is not set");
+
   const params = new URLSearchParams({ appId });
   if (limit) params.set("limit", String(limit));
   if (offset) params.set("offset", String(offset));
 
   const response = await fetch(
-    `${Bun.env.CLIENT_SERVICE_URL!}/anonymous-users?${params}`,
+    `${baseUrl}/anonymous-users?${params}`,
     {
       headers: {
-        "x-api-key": Bun.env.CLIENT_SERVICE_API_KEY!,
+        "x-api-key": apiKey,
       },
     }
   );

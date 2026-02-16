@@ -10,13 +10,18 @@ export async function main(
   clerkOrgId?: string,
   metadata?: Record<string, unknown>,
 ) {
+  const baseUrl = Bun.env.TRANSACTIONAL_EMAIL_SERVICE_URL;
+  const apiKey = Bun.env.TRANSACTIONAL_EMAIL_SERVICE_API_KEY;
+  if (!baseUrl) throw new Error("TRANSACTIONAL_EMAIL_SERVICE_URL is not set");
+  if (!apiKey) throw new Error("TRANSACTIONAL_EMAIL_SERVICE_API_KEY is not set");
+
   const response = await fetch(
-    `${Bun.env.LIFECYCLE_EMAILS_URL!}/send`,
+    `${baseUrl}/send`,
     {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "x-api-key": Bun.env.LIFECYCLE_EMAILS_API_KEY!,
+        "x-api-key": apiKey,
       },
       body: JSON.stringify({ appId, eventType, recipientEmail, brandId, campaignId, productId, clerkUserId, clerkOrgId, metadata }),
     }

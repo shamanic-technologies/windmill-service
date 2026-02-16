@@ -11,6 +11,7 @@ export const workflows = pgTable(
   "workflows",
   {
     id: uuid("id").primaryKey().defaultRandom(),
+    appId: text("app_id"),
     orgId: text("org_id").notNull(),
     brandId: text("brand_id"),
     campaignId: text("campaign_id"),
@@ -25,6 +26,7 @@ export const workflows = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
   },
   (table) => [
+    index("idx_workflows_app").on(table.appId),
     index("idx_workflows_org").on(table.orgId),
     index("idx_workflows_campaign").on(table.campaignId),
     index("idx_workflows_status").on(table.status),

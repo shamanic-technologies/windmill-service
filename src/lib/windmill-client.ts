@@ -98,12 +98,22 @@ export class WindmillClient {
 
   // === SCRIPTS ===
 
+  async getScript(path: string): Promise<{ hash: string; content: string; path: string; language: string; summary: string } | null> {
+    try {
+      return await this.request("GET", `/scripts/get/p/${path}`);
+    } catch (err) {
+      if (err instanceof Error && err.message.includes("404")) return null;
+      throw err;
+    }
+  }
+
   async createScript(script: {
     path: string;
     summary: string;
     description?: string;
     content: string;
     language: string;
+    parent_hash?: string;
   }): Promise<void> {
     await this.request("POST", "/scripts/create", script);
   }
