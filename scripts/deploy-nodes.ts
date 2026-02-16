@@ -52,6 +52,7 @@ export async function deployNodes(client: WindmillClient): Promise<
       await client.createScript({
         path: wmPath,
         summary,
+        description: "",
         content,
         language: "bun",
         parent_hash: existing.hash,
@@ -62,6 +63,7 @@ export async function deployNodes(client: WindmillClient): Promise<
       await client.createScript({
         path: wmPath,
         summary,
+        description: "",
         content,
         language: "bun",
       });
