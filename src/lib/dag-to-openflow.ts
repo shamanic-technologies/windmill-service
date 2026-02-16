@@ -68,7 +68,9 @@ export function dagToOpenFlow(dag: DAG, name: string): OpenFlow {
     schema: {
       $schema: "https://json-schema.org/draft/2020-12/schema",
       type: "object",
-      properties: {},
+      properties: {
+        appId: { type: "string", description: "Application identifier" },
+      },
       required: [],
     },
   };
@@ -145,6 +147,11 @@ function nodeToModule(node: DAGNode, dag: DAG): FlowModule | null {
   }
 
   const inputTransforms = buildInputTransforms(node.config, node.inputMapping);
+
+  // Auto-inject appId from flow_input unless the node already maps it explicitly
+  if (!inputTransforms.appId) {
+    inputTransforms.appId = { type: "javascript", expr: "flow_input.appId" };
+  }
 
   return {
     id: node.id,
