@@ -159,6 +159,50 @@ describe("dagToOpenFlow", () => {
     }
   });
 
+  it("auto-injects appId input_transform into script modules", () => {
+    const result = dagToOpenFlow(VALID_LINEAR_DAG, "AppId Inject");
+
+    for (const mod of result.value.modules) {
+      if (mod.value.type === "script") {
+        const transforms = mod.value.input_transforms as Record<
+          string,
+          { type: string; expr?: string; value?: unknown }
+        >;
+        expect(transforms.appId).toEqual({
+          type: "javascript",
+          expr: "flow_input.appId",
+        });
+      }
+    }
+  });
+
+  it("does not override explicit appId in node config", () => {
+    const result = dagToOpenFlow(POLARITY_WELCOME_DAG, "Explicit AppId");
+
+    const mod = result.value.modules[0];
+    expect(mod.value.type).toBe("script");
+
+    if (mod.value.type === "script") {
+      const transforms = mod.value.input_transforms as Record<
+        string,
+        { type: string; expr?: string; value?: unknown }
+      >;
+      // Should keep the static config value, not override with flow_input
+      expect(transforms.appId).toEqual({
+        type: "static",
+        value: "polaritycourse",
+      });
+    }
+  });
+
+  it("declares appId in OpenFlow schema properties", () => {
+    const result = dagToOpenFlow(VALID_LINEAR_DAG, "Schema Test");
+
+    expect(result.schema).toBeDefined();
+    const props = (result.schema as Record<string, unknown>).properties as Record<string, unknown>;
+    expect(props.appId).toEqual({ type: "string", description: "Application identifier" });
+  });
+
   it("generates valid OpenFlow schema structure", () => {
     const result = dagToOpenFlow(VALID_LINEAR_DAG, "Schema Test");
 
