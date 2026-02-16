@@ -29,7 +29,7 @@ export function buildInputTransforms(
         const path = ref.replace("$ref:", "");
         let expr: string;
 
-        if (path.startsWith("flow_input.")) {
+        if (path === "flow_input" || path.startsWith("flow_input.")) {
           expr = path;
         } else {
           // "node-id.output.field" → "results.node_id.field"

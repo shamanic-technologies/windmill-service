@@ -74,6 +74,17 @@ describe("buildInputTransforms", () => {
     expect(result.config).toBeUndefined();
   });
 
+  it("translates $ref:flow_input (whole object) to javascript transform", () => {
+    const result = buildInputTransforms(undefined, {
+      body: "$ref:flow_input",
+    });
+
+    expect(result.body).toEqual({
+      type: "javascript",
+      expr: "flow_input",
+    });
+  });
+
   it("returns empty object for no inputs", () => {
     const result = buildInputTransforms(undefined, undefined);
     expect(result).toEqual({});
