@@ -37,6 +37,10 @@ export const DAGNodeSchema = z
       "or \"$ref:node-id.output.fieldName\" for a previous node's output. " +
       "Keys in inputMapping override same-named keys in config."
     ),
+    retries: z.number().int().min(0).optional().describe(
+      "Number of retry attempts on failure. Defaults to 3 if omitted. " +
+      "Set to 0 for non-idempotent operations (e.g., sending emails, consuming queue items) to prevent duplicates."
+    ),
   })
   .openapi("DAGNode");
 
@@ -55,6 +59,11 @@ export const DAGSchema = z
   .object({
     nodes: z.array(DAGNodeSchema).min(1).describe("The steps of the workflow. Must contain at least one node."),
     edges: z.array(DAGEdgeSchema).describe("Execution order between nodes. Empty array for single-node workflows."),
+    onError: z.string().optional().describe(
+      "Node ID of an error handler that runs when any node in the DAG fails. " +
+      "The handler receives error context (failedNodeId, errorMessage) and can access outputs " +
+      "from previously completed nodes via $ref syntax. Use this to call end-run with success: false immediately on failure."
+    ),
   })
   .openapi("DAG");
 

@@ -8,6 +8,9 @@ import {
   POLARITY_WELCOME_DAG,
   DAG_WITH_HTTP_CALL,
   DAG_WITH_HTTP_CALL_CHAIN,
+  DAG_WITH_RETRIES_ZERO,
+  DAG_WITH_CUSTOM_RETRIES,
+  DAG_WITH_ON_ERROR,
 } from "../helpers/fixtures.js";
 
 describe("dagToOpenFlow", () => {
@@ -208,5 +211,76 @@ describe("dagToOpenFlow", () => {
 
     expect(result.schema).toBeDefined();
     expect(result.value.same_worker).toBe(false);
+  });
+
+  it("omits retry block when node has retries: 0", () => {
+    const result = dagToOpenFlow(DAG_WITH_RETRIES_ZERO, "No Retry");
+
+    expect(result.value.modules).toHaveLength(1);
+    const mod = result.value.modules[0];
+    expect(mod.retry).toBeUndefined();
+  });
+
+  it("uses custom retry count from node retries field", () => {
+    const result = dagToOpenFlow(DAG_WITH_CUSTOM_RETRIES, "Custom Retry");
+
+    const searchMod = result.value.modules.find((m) => m.id === "search");
+    expect(searchMod!.retry).toEqual({ constant: { attempts: 5, seconds: 5 } });
+
+    const sendMod = result.value.modules.find((m) => m.id === "send-email");
+    expect(sendMod!.retry).toBeUndefined();
+  });
+
+  it("defaults to 3 retries when retries field is omitted", () => {
+    const result = dagToOpenFlow(VALID_LINEAR_DAG, "Default Retry");
+
+    for (const mod of result.value.modules) {
+      if (mod.value.type === "script") {
+        expect(mod.retry).toEqual({ constant: { attempts: 3, seconds: 5 } });
+      }
+    }
+  });
+
+  it("translates onError to failure_module", () => {
+    const result = dagToOpenFlow(DAG_WITH_ON_ERROR, "Error Handler");
+
+    // end-run should NOT be in the main modules list
+    expect(result.value.modules.find((m) => m.id === "end-run")).toBeUndefined();
+
+    // failure_module should exist
+    expect(result.value.failure_module).toBeDefined();
+    expect(result.value.failure_module!.id).toBe("end-run");
+    expect(result.value.failure_module!.summary).toBe("onError: end-run");
+
+    if (result.value.failure_module!.value.type === "script") {
+      const transforms = result.value.failure_module!.value.input_transforms as Record<
+        string,
+        { type: string; expr?: string; value?: unknown }
+      >;
+      // Should preserve $ref input mappings
+      expect(transforms.runId).toEqual({
+        type: "javascript",
+        expr: "results.start_run.runId",
+      });
+      // Should inject error context
+      expect(transforms.failedNodeId).toEqual({
+        type: "javascript",
+        expr: "error.failed_step",
+      });
+      expect(transforms.errorMessage).toEqual({
+        type: "javascript",
+        expr: "error.message",
+      });
+      // Should auto-inject appId
+      expect(transforms.appId).toEqual({
+        type: "javascript",
+        expr: "flow_input.appId",
+      });
+    }
+  });
+
+  it("does not set failure_module when onError is not specified", () => {
+    const result = dagToOpenFlow(VALID_LINEAR_DAG, "No Error Handler");
+    expect(result.value.failure_module).toBeUndefined();
   });
 });

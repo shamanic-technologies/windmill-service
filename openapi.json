@@ -157,6 +157,11 @@
               "type": "string"
             },
             "description": "Dynamic input references using $ref syntax. Use \"$ref:flow_input.fieldName\" for workflow execution inputs, or \"$ref:node-id.output.fieldName\" for a previous node's output. Keys in inputMapping override same-named keys in config."
+          },
+          "retries": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Number of retry attempts on failure. Defaults to 3 if omitted. Set to 0 for non-idempotent operations (e.g., sending emails, consuming queue items) to prevent duplicates."
           }
         },
         "required": [
@@ -204,6 +209,10 @@
               "$ref": "#/components/schemas/DAGEdge"
             },
             "description": "Execution order between nodes. Empty array for single-node workflows."
+          },
+          "onError": {
+            "type": "string",
+            "description": "Node ID of an error handler that runs when any node in the DAG fails. The handler receives error context (failedNodeId, errorMessage) and can access outputs from previously completed nodes via $ref syntax. Use this to call end-run with success: false immediately on failure."
           }
         },
         "required": [

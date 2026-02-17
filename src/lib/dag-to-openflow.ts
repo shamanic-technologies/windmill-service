@@ -51,15 +51,20 @@ export interface OpenFlow {
   value: {
     modules: FlowModule[];
     same_worker: boolean;
+    failure_module?: FlowModule;
   };
   schema?: Record<string, unknown>;
 }
 
 export function dagToOpenFlow(dag: DAG, name: string): OpenFlow {
   const orderedNodes = topologicalSort(dag.nodes, dag.edges);
-  const modules = buildModules(orderedNodes, dag);
+  // Exclude the onError node from the main module list — it becomes the failure_module
+  const mainNodes = dag.onError
+    ? orderedNodes.filter((n) => n.id !== dag.onError)
+    : orderedNodes;
+  const modules = buildModules(mainNodes, dag);
 
-  return {
+  const flow: OpenFlow = {
     summary: name,
     value: {
       modules,
@@ -74,6 +79,18 @@ export function dagToOpenFlow(dag: DAG, name: string): OpenFlow {
       required: [],
     },
   };
+
+  if (dag.onError) {
+    const errorNode = dag.nodes.find((n) => n.id === dag.onError);
+    if (errorNode) {
+      const failureModule = buildFailureModule(errorNode);
+      if (failureModule) {
+        flow.value.failure_module = failureModule;
+      }
+    }
+  }
+
+  return flow;
 }
 
 function buildModules(orderedNodes: DAGNode[], dag: DAG): FlowModule[] {
@@ -153,7 +170,8 @@ function nodeToModule(node: DAGNode, dag: DAG): FlowModule | null {
     inputTransforms.appId = { type: "javascript", expr: "flow_input.appId" };
   }
 
-  return {
+  const retries = node.retries ?? 3;
+  const mod: FlowModule = {
     id: node.id,
     summary: `${node.type}: ${node.id}`,
     value: {
@@ -161,8 +179,49 @@ function nodeToModule(node: DAGNode, dag: DAG): FlowModule | null {
       path: scriptPath,
       input_transforms: inputTransforms,
     },
-    retry: {
-      constant: { attempts: 3, seconds: 5 },
+  };
+
+  if (retries > 0) {
+    mod.retry = { constant: { attempts: retries, seconds: 5 } };
+  }
+
+  return mod;
+}
+
+function buildFailureModule(node: DAGNode): FlowModule | null {
+  const scriptPath = getScriptPath(node.type);
+  if (scriptPath === undefined || scriptPath === null) {
+    return null;
+  }
+
+  const inputTransforms = buildInputTransforms(node.config, node.inputMapping);
+
+  // Auto-inject appId from flow_input unless explicitly mapped
+  if (!inputTransforms.appId) {
+    inputTransforms.appId = { type: "javascript", expr: "flow_input.appId" };
+  }
+
+  // Inject error context — available to the onError node
+  if (!inputTransforms.failedNodeId) {
+    inputTransforms.failedNodeId = {
+      type: "javascript",
+      expr: "error.failed_step",
+    };
+  }
+  if (!inputTransforms.errorMessage) {
+    inputTransforms.errorMessage = {
+      type: "javascript",
+      expr: "error.message",
+    };
+  }
+
+  return {
+    id: node.id,
+    summary: `onError: ${node.id}`,
+    value: {
+      type: "script",
+      path: scriptPath,
+      input_transforms: inputTransforms,
     },
   };
 }

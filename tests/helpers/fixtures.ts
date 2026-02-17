@@ -255,6 +255,76 @@ export const DAG_WITH_HTTP_CALL_CHAIN: DAG = {
   edges: [{ from: "create-user", to: "send-welcome" }],
 };
 
+export const DAG_WITH_RETRIES_ZERO: DAG = {
+  nodes: [
+    {
+      id: "send-email",
+      type: "transactional-email.send",
+      config: { appId: "test-app", eventType: "welcome" },
+      retries: 0,
+    },
+  ],
+  edges: [],
+};
+
+export const DAG_WITH_CUSTOM_RETRIES: DAG = {
+  nodes: [
+    {
+      id: "search",
+      type: "lead-service",
+      config: { source: "apollo" },
+      retries: 5,
+    },
+    {
+      id: "send-email",
+      type: "transactional-email.send",
+      config: { eventType: "outreach" },
+      inputMapping: { recipientEmail: "$ref:search.output.email" },
+      retries: 0,
+    },
+  ],
+  edges: [{ from: "search", to: "send-email" }],
+};
+
+export const DAG_WITH_ON_ERROR: DAG = {
+  nodes: [
+    {
+      id: "start-run",
+      type: "http.call",
+      config: { service: "runs", method: "POST", path: "/runs/start" },
+    },
+    {
+      id: "do-work",
+      type: "http.call",
+      config: { service: "lead", method: "POST", path: "/buffer/next" },
+      retries: 0,
+      inputMapping: {
+        runId: "$ref:start-run.output.runId",
+      },
+    },
+    {
+      id: "end-run",
+      type: "http.call",
+      config: { service: "runs", method: "POST", path: "/runs/end" },
+      inputMapping: {
+        runId: "$ref:start-run.output.runId",
+        success: "$ref:flow_input.success",
+      },
+    },
+  ],
+  edges: [
+    { from: "start-run", to: "do-work" },
+    { from: "do-work", to: "end-run" },
+  ],
+  onError: "end-run",
+};
+
+export const DAG_WITH_BAD_ON_ERROR: DAG = {
+  nodes: [{ id: "a", type: "lead-service" }],
+  edges: [],
+  onError: "nonexistent-handler",
+};
+
 export const POLARITY_WELCOME_DAG: DAG = {
   nodes: [
     {

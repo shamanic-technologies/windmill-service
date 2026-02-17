@@ -18,6 +18,9 @@ import {
   POLARITY_WELCOME_DAG,
   DAG_WITH_HTTP_CALL,
   DAG_WITH_HTTP_CALL_CHAIN,
+  DAG_WITH_ON_ERROR,
+  DAG_WITH_BAD_ON_ERROR,
+  DAG_WITH_RETRIES_ZERO,
 } from "../helpers/fixtures.js";
 
 describe("validateDAG", () => {
@@ -127,5 +130,25 @@ describe("validateDAG", () => {
     expect(
       result.errors.some((e) => e.message.includes("No entry node"))
     ).toBe(true);
+  });
+
+  it("accepts a DAG with valid onError pointing to existing node", () => {
+    const result = validateDAG(DAG_WITH_ON_ERROR);
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
+  });
+
+  it("rejects a DAG with onError pointing to non-existent node", () => {
+    const result = validateDAG(DAG_WITH_BAD_ON_ERROR);
+    expect(result.valid).toBe(false);
+    expect(
+      result.errors.some((e) => e.message.includes("onError references unknown node"))
+    ).toBe(true);
+  });
+
+  it("accepts a DAG with retries: 0 on a node", () => {
+    const result = validateDAG(DAG_WITH_RETRIES_ZERO);
+    expect(result.valid).toBe(true);
+    expect(result.errors).toHaveLength(0);
   });
 });

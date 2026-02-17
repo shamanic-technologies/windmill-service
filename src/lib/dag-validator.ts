@@ -5,6 +5,7 @@ export interface DAGNode {
   type: string;
   config?: Record<string, unknown>;
   inputMapping?: Record<string, string>;
+  retries?: number;
 }
 
 export interface DAGEdge {
@@ -16,6 +17,7 @@ export interface DAGEdge {
 export interface DAG {
   nodes: DAGNode[];
   edges: DAGEdge[];
+  onError?: string;
 }
 
 export interface ValidationError {
@@ -100,6 +102,14 @@ export function validateDAG(dag: DAG): ValidationResult {
     errors.push({
       field: "nodes",
       message: "No entry node found (all nodes have incoming edges)",
+    });
+  }
+
+  // 7. onError references an existing node
+  if (dag.onError && !nodeIdSet.has(dag.onError)) {
+    errors.push({
+      field: "onError",
+      message: `onError references unknown node: "${dag.onError}"`,
     });
   }
 
