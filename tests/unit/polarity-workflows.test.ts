@@ -52,13 +52,23 @@ describe("Polarity workflows", () => {
       expect(wf.dag.nodes[2].type).toBe("transactional-email.send");
     });
 
-    it("translates for-each to forloopflow module", () => {
+    it("translates for-each to forloopflow module with nested body", () => {
       const openflow = dagToOpenFlow(wf.dag, wf.name);
       const loopModule = openflow.value.modules.find(
         (m) => m.id === "loop_contacts"
       );
       expect(loopModule).toBeDefined();
       expect(loopModule!.value.type).toBe("forloopflow");
+
+      if (loopModule!.value.type === "forloopflow") {
+        // send-reminder should be inside the loop body, not top-level
+        expect(loopModule!.value.modules).toHaveLength(1);
+        expect(loopModule!.value.modules[0].id).toBe("send_reminder");
+      }
+
+      // send_reminder should NOT appear as a top-level module
+      const topLevelIds = openflow.value.modules.map((m) => m.id);
+      expect(topLevelIds).not.toContain("send_reminder");
     });
   });
 

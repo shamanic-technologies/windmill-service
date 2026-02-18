@@ -434,6 +434,65 @@ export const DAG_WITH_SKIP_IF: DAG = {
   ],
 };
 
+export const DAG_WITH_CONDITION_CHAIN: DAG = {
+  nodes: [
+    {
+      id: "fetch-lead",
+      type: "http.call",
+      config: { service: "lead", method: "POST", path: "/buffer/next" },
+      retries: 0,
+    },
+    { id: "check-lead", type: "condition" },
+    {
+      id: "email-gen",
+      type: "http.call",
+      config: { service: "ai", method: "POST", path: "/generate" },
+    },
+    {
+      id: "email-send",
+      type: "http.call",
+      config: { service: "email", method: "POST", path: "/send" },
+    },
+    {
+      id: "end-run",
+      type: "http.call",
+      config: { service: "runs", method: "POST", path: "/runs/end" },
+    },
+  ],
+  edges: [
+    { from: "fetch-lead", to: "check-lead" },
+    { from: "check-lead", to: "email-gen", condition: "results.fetch_lead.found == true" },
+    { from: "email-gen", to: "email-send" },
+    { from: "check-lead", to: "end-run" },
+  ],
+};
+
+export const DAG_WITH_TWO_BRANCHES: DAG = {
+  nodes: [
+    { id: "check-score", type: "condition" },
+    {
+      id: "send-email",
+      type: "http.call",
+      config: { service: "email", method: "POST", path: "/send" },
+    },
+    {
+      id: "send-sms",
+      type: "http.call",
+      config: { service: "sms", method: "POST", path: "/send" },
+    },
+    {
+      id: "log-result",
+      type: "http.call",
+      config: { service: "log", method: "POST", path: "/log" },
+    },
+  ],
+  edges: [
+    { from: "check-score", to: "send-email", condition: "results.check_score.score > 50" },
+    { from: "check-score", to: "send-sms", condition: "results.check_score.score <= 50" },
+    { from: "check-score", to: "log-result" },
+  ],
+};
+
 export const POLARITY_WELCOME_DAG: DAG = {
   nodes: [
     {
