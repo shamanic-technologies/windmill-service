@@ -325,6 +325,22 @@ export const DAG_WITH_BAD_ON_ERROR: DAG = {
   onError: "nonexistent-handler",
 };
 
+export const DAG_WITH_FLOW_INPUT_REFS: DAG = {
+  nodes: [
+    {
+      id: "start-run",
+      type: "http.call",
+      config: { service: "campaign", method: "POST", path: "/internal/start-run" },
+      inputMapping: {
+        "body.campaignId": "$ref:flow_input.campaignId",
+        "body.clerkOrgId": "$ref:flow_input.clerkOrgId",
+      },
+      retries: 0,
+    },
+  ],
+  edges: [],
+};
+
 export const POLARITY_WELCOME_DAG: DAG = {
   nodes: [
     {

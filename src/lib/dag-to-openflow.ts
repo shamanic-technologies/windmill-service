@@ -64,6 +64,21 @@ export function dagToOpenFlow(dag: DAG, name: string): OpenFlow {
     : orderedNodes;
   const modules = buildModules(mainNodes, dag);
 
+  // Collect all flow_input fields referenced by any node so Windmill accepts them
+  const schemaProperties: Record<string, { type: string; description?: string }> = {
+    appId: { type: "string", description: "Application identifier" },
+  };
+  for (const node of dag.nodes) {
+    if (!node.inputMapping) continue;
+    for (const ref of Object.values(node.inputMapping)) {
+      if (typeof ref !== "string" || !ref.startsWith("$ref:flow_input.")) continue;
+      const field = ref.replace("$ref:flow_input.", "").split(".")[0];
+      if (field && !schemaProperties[field]) {
+        schemaProperties[field] = { type: "string" };
+      }
+    }
+  }
+
   const flow: OpenFlow = {
     summary: name,
     value: {
@@ -73,9 +88,7 @@ export function dagToOpenFlow(dag: DAG, name: string): OpenFlow {
     schema: {
       $schema: "https://json-schema.org/draft/2020-12/schema",
       type: "object",
-      properties: {
-        appId: { type: "string", description: "Application identifier" },
-      },
+      properties: schemaProperties,
       required: [],
     },
   };
@@ -179,11 +192,10 @@ function nodeToModule(node: DAGNode, dag: DAG): FlowModule | null {
       path: scriptPath,
       input_transforms: inputTransforms,
     },
+    retry: retries > 0
+      ? { constant: { attempts: retries, seconds: 5 } }
+      : { constant: { attempts: 0, seconds: 0 } },
   };
-
-  if (retries > 0) {
-    mod.retry = { constant: { attempts: retries, seconds: 5 } };
-  }
 
   return mod;
 }

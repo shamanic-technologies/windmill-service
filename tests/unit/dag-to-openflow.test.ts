@@ -11,6 +11,7 @@ import {
   DAG_WITH_RETRIES_ZERO,
   DAG_WITH_CUSTOM_RETRIES,
   DAG_WITH_ON_ERROR,
+  DAG_WITH_FLOW_INPUT_REFS,
 } from "../helpers/fixtures.js";
 
 describe("dagToOpenFlow", () => {
@@ -213,12 +214,12 @@ describe("dagToOpenFlow", () => {
     expect(result.value.same_worker).toBe(false);
   });
 
-  it("omits retry block when node has retries: 0", () => {
+  it("sets explicit retry attempts: 0 when node has retries: 0", () => {
     const result = dagToOpenFlow(DAG_WITH_RETRIES_ZERO, "No Retry");
 
     expect(result.value.modules).toHaveLength(1);
     const mod = result.value.modules[0];
-    expect(mod.retry).toBeUndefined();
+    expect(mod.retry).toEqual({ constant: { attempts: 0, seconds: 0 } });
   });
 
   it("uses custom retry count from node retries field", () => {
@@ -228,7 +229,7 @@ describe("dagToOpenFlow", () => {
     expect(searchMod!.retry).toEqual({ constant: { attempts: 5, seconds: 5 } });
 
     const sendMod = result.value.modules.find((m) => m.id === "send-email");
-    expect(sendMod!.retry).toBeUndefined();
+    expect(sendMod!.retry).toEqual({ constant: { attempts: 0, seconds: 0 } });
   });
 
   it("defaults to 3 retries when retries field is omitted", () => {
@@ -282,5 +283,30 @@ describe("dagToOpenFlow", () => {
   it("does not set failure_module when onError is not specified", () => {
     const result = dagToOpenFlow(VALID_LINEAR_DAG, "No Error Handler");
     expect(result.value.failure_module).toBeUndefined();
+  });
+
+  it("declares $ref:flow_input fields in OpenFlow schema so Windmill passes them through", () => {
+    const result = dagToOpenFlow(DAG_WITH_FLOW_INPUT_REFS, "Flow Input Schema");
+
+    const props = (result.schema as Record<string, unknown>).properties as Record<string, unknown>;
+    expect(props.appId).toEqual({ type: "string", description: "Application identifier" });
+    expect(props.campaignId).toEqual({ type: "string" });
+    expect(props.clerkOrgId).toEqual({ type: "string" });
+  });
+
+  it("declares flow_input fields from all nodes including onError handler", () => {
+    const result = dagToOpenFlow(DAG_WITH_ON_ERROR, "Error Handler Schema");
+
+    const props = (result.schema as Record<string, unknown>).properties as Record<string, unknown>;
+    // success is referenced via $ref:flow_input.success in end-run node
+    expect(props.success).toEqual({ type: "string" });
+  });
+
+  it("declares nested flow_input refs using only the top-level field name", () => {
+    const result = dagToOpenFlow(VALID_LINEAR_DAG, "Nested Ref Schema");
+
+    const props = (result.schema as Record<string, unknown>).properties as Record<string, unknown>;
+    // brandIntel is referenced via $ref:flow_input.brandIntel in email-gen node
+    expect(props.brandIntel).toEqual({ type: "string" });
   });
 });
