@@ -149,7 +149,7 @@
             "additionalProperties": {
               "nullable": true
             },
-            "description": "Static parameters passed to the node. For http.call: { service, method, path, body?, query?, headers? }. For wait: { seconds }. For for-each: { iterator, parallel?, skipFailures? }. Each key becomes a direct parameter of the underlying script. Special config keys (stripped before passing to script): retries (number) — override default retry count; validateResponse ({ field, equals }) — throw error if response[field] !== equals, triggers onError handler; stopAfterIf (string) — JS expression evaluated after step completes using 'result' variable, stops the flow gracefully (no onError) when true. Example: \"result.found == false\"."
+            "description": "Static parameters passed to the node. For http.call: { service, method, path, body?, query?, headers? }. For wait: { seconds }. For for-each: { iterator, parallel?, skipFailures? }. Each key becomes a direct parameter of the underlying script. Special config keys (stripped before passing to script): retries (number) — override default retry count; validateResponse ({ field, equals }) — throw error if response[field] !== equals, triggers onError handler; stopAfterIf (string) — JS expression evaluated after step completes using 'result' variable, stops the flow gracefully (no onError) when true. Example: \"result.found == false\"; skipIf (string) — JS expression evaluated before this step runs, skips the step when true. Can reference previous results or flow_input. Example: \"results.fetch_lead.found == false\" to skip email generation when no leads."
           },
           "inputMapping": {
             "type": "object",

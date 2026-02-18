@@ -15,6 +15,7 @@ import {
   DAG_WITH_CONFIG_RETRIES,
   DAG_WITH_DOT_NOTATION_AND_STATIC_BASE,
   DAG_WITH_STOP_AFTER_IF,
+  DAG_WITH_SKIP_IF,
 } from "../helpers/fixtures.js";
 
 describe("dagToOpenFlow", () => {
@@ -424,6 +425,40 @@ describe("dagToOpenFlow", () => {
 
     const mod = result.value.modules[0];
     expect(mod.stop_after_if).toBeUndefined();
+  });
+
+  it("adds skip_if to module when config.skipIf is set", () => {
+    const result = dagToOpenFlow(DAG_WITH_SKIP_IF, "Skip If");
+
+    const emailMod = result.value.modules.find((m) => m.id === "email_gen");
+    expect(emailMod).toBeDefined();
+    expect(emailMod!.skip_if).toEqual({
+      expr: "results.fetch_lead.found == false",
+    });
+  });
+
+  it("strips skipIf from input_transforms", () => {
+    const result = dagToOpenFlow(DAG_WITH_SKIP_IF, "Strip SkipIf");
+
+    const emailMod = result.value.modules.find((m) => m.id === "email_gen");
+    if (emailMod!.value.type === "script") {
+      const transforms = emailMod!.value.input_transforms as Record<
+        string,
+        { type: string; value?: unknown; expr?: string }
+      >;
+      expect(transforms.skipIf).toBeUndefined();
+      expect(transforms.service).toEqual({ type: "static", value: "ai" });
+    }
+  });
+
+  it("does not add skip_if to modules without config.skipIf", () => {
+    const result = dagToOpenFlow(DAG_WITH_SKIP_IF, "No Skip");
+
+    const fetchMod = result.value.modules.find((m) => m.id === "fetch_lead");
+    expect(fetchMod!.skip_if).toBeUndefined();
+
+    const endMod = result.value.modules.find((m) => m.id === "end_run");
+    expect(endMod!.skip_if).toBeUndefined();
   });
 
   it("merges dot-notation keys with static config body and handles nested metadata", () => {

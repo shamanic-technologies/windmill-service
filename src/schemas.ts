@@ -34,7 +34,10 @@ export const DAGNodeSchema = z
       "retries (number) — override default retry count; " +
       "validateResponse ({ field, equals }) — throw error if response[field] !== equals, triggers onError handler; " +
       "stopAfterIf (string) — JS expression evaluated after step completes using 'result' variable, " +
-      "stops the flow gracefully (no onError) when true. Example: \"result.found == false\"."
+      "stops the flow gracefully (no onError) when true. Example: \"result.found == false\"; " +
+      "skipIf (string) — JS expression evaluated before this step runs, " +
+      "skips the step when true. Can reference previous results or flow_input. " +
+      "Example: \"results.fetch_lead.found == false\" to skip email generation when no leads."
     ),
     inputMapping: z.record(z.string()).optional().describe(
       "Dynamic input references using $ref syntax. " +
