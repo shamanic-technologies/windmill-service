@@ -12,6 +12,7 @@ export async function main(
   body?: Record<string, unknown>,
   query?: Record<string, string>,
   serviceEnvs?: Record<string, string>,
+  headers?: Record<string, string>,
 ) {
   // Convert service name to env var prefix: "transactional-email" → "TRANSACTIONAL_EMAIL"
   const envPrefix = service.toUpperCase().replace(/-/g, "_");
@@ -36,15 +37,16 @@ export async function main(
     url += `?${params}`;
   }
 
-  // Build request
-  const headers: Record<string, string> = {
+  // Build request — merge caller-supplied headers with defaults
+  const reqHeaders: Record<string, string> = {
     "Content-Type": "application/json",
+    ...headers,
   };
   if (apiKey) {
-    headers["x-api-key"] = apiKey;
+    reqHeaders["x-api-key"] = apiKey;
   }
 
-  const options: RequestInit = { method, headers };
+  const options: RequestInit = { method, headers: reqHeaders };
 
   if (body && ["POST", "PUT", "PATCH"].includes(method.toUpperCase())) {
     options.body = JSON.stringify(body);
