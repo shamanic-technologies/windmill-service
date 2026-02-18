@@ -404,6 +404,36 @@ export const DAG_WITH_STOP_AFTER_IF: DAG = {
   edges: [{ from: "fetch-lead", to: "email-gen" }],
 };
 
+export const DAG_WITH_SKIP_IF: DAG = {
+  nodes: [
+    {
+      id: "fetch-lead",
+      type: "http.call",
+      config: { service: "lead", method: "POST", path: "/buffer/next" },
+      retries: 0,
+    },
+    {
+      id: "email-gen",
+      type: "http.call",
+      config: {
+        service: "ai",
+        method: "POST",
+        path: "/generate",
+        skipIf: "results.fetch_lead.found == false",
+      },
+    },
+    {
+      id: "end-run",
+      type: "http.call",
+      config: { service: "campaign", method: "POST", path: "/end-run" },
+    },
+  ],
+  edges: [
+    { from: "fetch-lead", to: "email-gen" },
+    { from: "email-gen", to: "end-run" },
+  ],
+};
+
 export const POLARITY_WELCOME_DAG: DAG = {
   nodes: [
     {

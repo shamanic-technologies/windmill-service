@@ -13,6 +13,7 @@ export interface FlowModule {
   sleep?: { type: "javascript"; expr: string } | { type: "static"; value: number };
   retry?: { constant?: { attempts: number; seconds: number } };
   stop_after_if?: { expr: string; skip_if_stopped?: boolean };
+  skip_if?: { expr: string };
 }
 
 interface ScriptModule {
@@ -185,7 +186,9 @@ function nodeToModule(node: DAGNode, dag: DAG): FlowModule | null {
     ?? (typeof node.config?.retries === "number" ? node.config.retries : 3);
   const stopAfterIf = typeof node.config?.stopAfterIf === "string"
     ? node.config.stopAfterIf : undefined;
-  const { retries: _r, stopAfterIf: _s, ...scriptConfig } = node.config ?? {};
+  const skipIf = typeof node.config?.skipIf === "string"
+    ? node.config.skipIf : undefined;
+  const { retries: _r, stopAfterIf: _s, skipIf: _sk, ...scriptConfig } = node.config ?? {};
 
   const inputTransforms = buildInputTransforms(
     Object.keys(scriptConfig).length > 0 ? scriptConfig : undefined,
@@ -214,6 +217,9 @@ function nodeToModule(node: DAGNode, dag: DAG): FlowModule | null {
 
   if (stopAfterIf) {
     mod.stop_after_if = { expr: stopAfterIf, skip_if_stopped: true };
+  }
+  if (skipIf) {
+    mod.skip_if = { expr: skipIf };
   }
 
   return mod;
