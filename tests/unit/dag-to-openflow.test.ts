@@ -16,6 +16,8 @@ import {
   DAG_WITH_DOT_NOTATION_AND_STATIC_BASE,
   DAG_WITH_STOP_AFTER_IF,
   DAG_WITH_SKIP_IF,
+  DAG_WITH_CONDITION_CHAIN,
+  DAG_WITH_TWO_BRANCHES,
 } from "../helpers/fixtures.js";
 
 describe("dagToOpenFlow", () => {
@@ -46,34 +48,47 @@ describe("dagToOpenFlow", () => {
     expect(waitModule!.sleep).toEqual({ type: "static", value: 30 });
   });
 
-  it("translates a condition node to a branchone module", () => {
+  it("translates a condition node to a branchone module with nested branch targets", () => {
     const result = dagToOpenFlow(DAG_WITH_CONDITION, "Branch Flow");
 
-    const condModule = result.value.modules.find((m) => m.id === "check");
-    expect(condModule).toBeDefined();
-    expect(condModule!.value.type).toBe("branchone");
+    // Only the branchone should be top-level (branch-a/branch-b are nested inside)
+    expect(result.value.modules).toHaveLength(1);
 
-    if (condModule!.value.type === "branchone") {
-      expect(condModule!.value.branches).toHaveLength(2);
-      expect(condModule!.value.branches[0].expr).toBe(
-        "results.check.score > 50"
-      );
+    const condModule = result.value.modules[0];
+    expect(condModule.id).toBe("check");
+    expect(condModule.value.type).toBe("branchone");
+
+    if (condModule.value.type === "branchone") {
+      expect(condModule.value.branches).toHaveLength(2);
+
+      expect(condModule.value.branches[0].expr).toBe("results.check.score > 50");
+      expect(condModule.value.branches[0].modules).toHaveLength(1);
+      expect(condModule.value.branches[0].modules[0].id).toBe("branch_a");
+
+      expect(condModule.value.branches[1].expr).toBe("results.check.score <= 50");
+      expect(condModule.value.branches[1].modules).toHaveLength(1);
+      expect(condModule.value.branches[1].modules[0].id).toBe("branch_b");
     }
   });
 
-  it("translates a for-each node to a forloopflow module", () => {
+  it("translates a for-each node to a forloopflow module with nested body", () => {
     const result = dagToOpenFlow(DAG_WITH_FOREACH, "Loop Flow");
 
-    const loopModule = result.value.modules.find((m) => m.id === "loop");
-    expect(loopModule).toBeDefined();
-    expect(loopModule!.value.type).toBe("forloopflow");
+    // Only the forloopflow should be top-level (send is nested inside)
+    expect(result.value.modules).toHaveLength(1);
 
-    if (loopModule!.value.type === "forloopflow") {
-      expect(loopModule!.value.iterator).toEqual({
+    const loopModule = result.value.modules[0];
+    expect(loopModule.id).toBe("loop");
+    expect(loopModule.value.type).toBe("forloopflow");
+
+    if (loopModule.value.type === "forloopflow") {
+      expect(loopModule.value.iterator).toEqual({
         type: "javascript",
         expr: "flow_input.contacts",
       });
-      expect(loopModule!.value.parallel).toBe(false);
+      expect(loopModule.value.parallel).toBe(false);
+      expect(loopModule.value.modules).toHaveLength(1);
+      expect(loopModule.value.modules[0].id).toBe("send");
     }
   });
 
@@ -459,6 +474,57 @@ describe("dagToOpenFlow", () => {
 
     const endMod = result.value.modules.find((m) => m.id === "end_run");
     expect(endMod!.skip_if).toBeUndefined();
+  });
+
+  it("nests chained nodes inside condition branch and keeps after-branch nodes top-level", () => {
+    const result = dagToOpenFlow(DAG_WITH_CONDITION_CHAIN, "Campaign Flow");
+
+    // Top-level: fetch-lead, check-lead (branchone), end-run
+    expect(result.value.modules).toHaveLength(3);
+    expect(result.value.modules[0].id).toBe("fetch_lead");
+    expect(result.value.modules[1].id).toBe("check_lead");
+    expect(result.value.modules[2].id).toBe("end_run");
+
+    const condModule = result.value.modules[1];
+    expect(condModule.value.type).toBe("branchone");
+
+    if (condModule.value.type === "branchone") {
+      expect(condModule.value.branches).toHaveLength(1);
+      expect(condModule.value.branches[0].expr).toBe("results.fetch_lead.found == true");
+      // email-gen and email-send are chained inside the branch
+      expect(condModule.value.branches[0].modules).toHaveLength(2);
+      expect(condModule.value.branches[0].modules[0].id).toBe("email_gen");
+      expect(condModule.value.branches[0].modules[1].id).toBe("email_send");
+
+      // Default branch is empty (when found=false, skip to end-run)
+      expect(condModule.value.default).toHaveLength(0);
+    }
+  });
+
+  it("places nodes in correct branches and keeps unconditional targets after branch", () => {
+    const result = dagToOpenFlow(DAG_WITH_TWO_BRANCHES, "Two Branch Flow");
+
+    // Top-level: branchone (check-score), log-result
+    expect(result.value.modules).toHaveLength(2);
+    expect(result.value.modules[0].id).toBe("check_score");
+    expect(result.value.modules[1].id).toBe("log_result");
+
+    const condModule = result.value.modules[0];
+    if (condModule.value.type === "branchone") {
+      expect(condModule.value.branches).toHaveLength(2);
+
+      const highBranch = condModule.value.branches.find(
+        (b) => b.expr === "results.check_score.score > 50",
+      );
+      expect(highBranch!.modules).toHaveLength(1);
+      expect(highBranch!.modules[0].id).toBe("send_email");
+
+      const lowBranch = condModule.value.branches.find(
+        (b) => b.expr === "results.check_score.score <= 50",
+      );
+      expect(lowBranch!.modules).toHaveLength(1);
+      expect(lowBranch!.modules[0].id).toBe("send_sms");
+    }
   });
 
   it("merges dot-notation keys with static config body and handles nested metadata", () => {

@@ -110,14 +110,212 @@ export function dagToOpenFlow(dag: DAG, name: string): OpenFlow {
 }
 
 function buildModules(orderedNodes: DAGNode[], dag: DAG): FlowModule[] {
+  // Pre-compute: determine which nodes are consumed by condition/for-each containers
+  const consumed = new Set<string>();
+  const conditionInfo = new Map<
+    string,
+    { branchNodeSets: Map<string, Set<string>>; afterNodes: Set<string> }
+  >();
+  const loopBodyInfo = new Map<string, Set<string>>();
+
+  // Build incoming-edges map once (shared by all helpers)
+  const incomingEdges = new Map<string, DAGEdge[]>();
+  for (const node of dag.nodes) {
+    incomingEdges.set(node.id, []);
+  }
+  for (const edge of dag.edges) {
+    incomingEdges.get(edge.to)?.push(edge);
+  }
+
+  for (const node of orderedNodes) {
+    if (node.type === "condition") {
+      const info = collectBranchNodes(node.id, dag, orderedNodes, incomingEdges);
+      conditionInfo.set(node.id, info);
+      for (const nodeSet of info.branchNodeSets.values()) {
+        for (const id of nodeSet) consumed.add(id);
+      }
+    } else if (node.type === "for-each") {
+      const bodyNodes = collectLoopBodyNodes(node.id, dag, orderedNodes, incomingEdges);
+      loopBodyInfo.set(node.id, bodyNodes);
+      for (const id of bodyNodes) consumed.add(id);
+    }
+  }
+
+  // Build pass: iterate ordered nodes, skip consumed, build containers with nested modules
   const modules: FlowModule[] = [];
 
   for (const node of orderedNodes) {
-    const mod = nodeToModule(node, dag);
-    if (mod) modules.push(mod);
+    if (consumed.has(node.id)) continue;
+
+    if (node.type === "condition") {
+      const mod = buildConditionModule(node, dag, orderedNodes, conditionInfo.get(node.id)!);
+      modules.push(mod);
+    } else if (node.type === "for-each") {
+      const mod = buildForEachModule(node, orderedNodes, loopBodyInfo.get(node.id)!, dag);
+      modules.push(mod);
+    } else {
+      const mod = nodeToModule(node, dag);
+      if (mod) modules.push(mod);
+    }
   }
 
   return modules;
+}
+
+/**
+ * For a condition node, determine which downstream nodes belong to each branch
+ * and which nodes come after the branchone (unconditional edge targets).
+ */
+function collectBranchNodes(
+  conditionNodeId: string,
+  dag: DAG,
+  orderedNodes: DAGNode[],
+  incomingEdges: Map<string, DAGEdge[]>,
+): { branchNodeSets: Map<string, Set<string>>; afterNodes: Set<string> } {
+  const outEdges = dag.edges.filter((e) => e.from === conditionNodeId);
+  const afterNodes = new Set(
+    outEdges.filter((e) => !e.condition).map((e) => e.to),
+  );
+
+  // Group conditional edges by expression
+  const branchRoots = new Map<string, Set<string>>();
+  for (const edge of outEdges) {
+    if (!edge.condition) continue;
+    if (!branchRoots.has(edge.condition)) {
+      branchRoots.set(edge.condition, new Set());
+    }
+    branchRoots.get(edge.condition)!.add(edge.to);
+  }
+
+  const branchNodeSets = new Map<string, Set<string>>();
+
+  for (const [expr, roots] of branchRoots) {
+    const branchSet = new Set<string>();
+
+    // Walk orderedNodes (topological order guarantees predecessors come first)
+    for (const node of orderedNodes) {
+      if (afterNodes.has(node.id)) continue;
+      if (node.id === conditionNodeId) continue;
+
+      if (roots.has(node.id)) {
+        branchSet.add(node.id);
+        continue;
+      }
+
+      if (branchSet.has(node.id)) continue;
+
+      // Check if ALL incoming edges come from within this branch
+      const incoming = incomingEdges.get(node.id) ?? [];
+      if (incoming.length === 0) continue;
+      if (incoming.every((inc) => branchSet.has(inc.from))) {
+        branchSet.add(node.id);
+      }
+    }
+
+    branchNodeSets.set(expr, branchSet);
+  }
+
+  return { branchNodeSets, afterNodes };
+}
+
+/**
+ * For a for-each node, determine which downstream nodes belong inside the loop body.
+ */
+function collectLoopBodyNodes(
+  forEachNodeId: string,
+  dag: DAG,
+  orderedNodes: DAGNode[],
+  incomingEdges: Map<string, DAGEdge[]>,
+): Set<string> {
+  const directTargets = new Set(
+    dag.edges.filter((e) => e.from === forEachNodeId).map((e) => e.to),
+  );
+
+  const bodySet = new Set<string>();
+
+  for (const node of orderedNodes) {
+    if (node.id === forEachNodeId) continue;
+
+    if (directTargets.has(node.id)) {
+      bodySet.add(node.id);
+      continue;
+    }
+
+    if (bodySet.has(node.id)) continue;
+
+    const incoming = incomingEdges.get(node.id) ?? [];
+    if (incoming.length === 0) continue;
+    if (incoming.every((inc) => inc.from === forEachNodeId || bodySet.has(inc.from))) {
+      bodySet.add(node.id);
+    }
+  }
+
+  return bodySet;
+}
+
+function buildConditionModule(
+  node: DAGNode,
+  dag: DAG,
+  orderedNodes: DAGNode[],
+  info: { branchNodeSets: Map<string, Set<string>>; afterNodes: Set<string> },
+): FlowModule {
+  const moduleId = node.id.replace(/-/g, "_");
+  const outEdges = dag.edges.filter((e) => e.from === node.id && e.condition);
+
+  // Deduplicate by expression (multiple edges can share the same condition)
+  const seenExprs = new Set<string>();
+  const branches: Array<{ summary?: string; expr: string; modules: FlowModule[] }> = [];
+
+  for (const edge of outEdges) {
+    const expr = edge.condition!;
+    if (seenExprs.has(expr)) continue;
+    seenExprs.add(expr);
+
+    const branchNodeIds = info.branchNodeSets.get(expr) ?? new Set();
+    const branchNodes = orderedNodes.filter((n) => branchNodeIds.has(n.id));
+    const branchModules: FlowModule[] = [];
+    for (const bn of branchNodes) {
+      const mod = nodeToModule(bn, dag);
+      if (mod) branchModules.push(mod);
+    }
+
+    branches.push({ summary: expr, expr, modules: branchModules });
+  }
+
+  return {
+    id: moduleId,
+    summary: "Branch",
+    value: { type: "branchone", branches, default: [] },
+  };
+}
+
+function buildForEachModule(
+  node: DAGNode,
+  orderedNodes: DAGNode[],
+  bodyNodeIds: Set<string>,
+  dag: DAG,
+): FlowModule {
+  const moduleId = node.id.replace(/-/g, "_");
+  const iteratorExpr = (node.config?.iterator as string) ?? "flow_input.items";
+
+  const bodyNodes = orderedNodes.filter((n) => bodyNodeIds.has(n.id));
+  const bodyModules: FlowModule[] = [];
+  for (const bn of bodyNodes) {
+    const mod = nodeToModule(bn, dag);
+    if (mod) bodyModules.push(mod);
+  }
+
+  return {
+    id: moduleId,
+    summary: "For each",
+    value: {
+      type: "forloopflow",
+      iterator: { type: "javascript", expr: iteratorExpr },
+      modules: bodyModules,
+      skip_failures: (node.config?.skipFailures as boolean) ?? false,
+      parallel: (node.config?.parallel as boolean) ?? false,
+    },
+  };
 }
 
 function nodeToModule(node: DAGNode, dag: DAG): FlowModule | null {
@@ -134,43 +332,6 @@ function nodeToModule(node: DAGNode, dag: DAG): FlowModule | null {
         language: "bun",
       },
       sleep: { type: "static", value: seconds },
-    };
-  }
-
-  if (node.type === "condition") {
-    const outEdges = dag.edges.filter((e) => e.from === node.id);
-    const branches = outEdges
-      .filter((e) => e.condition)
-      .map((e) => ({
-        summary: e.condition,
-        expr: e.condition!,
-        modules: [] as FlowModule[],
-      }));
-
-    return {
-      id: moduleId,
-      summary: "Branch",
-      value: {
-        type: "branchone",
-        branches,
-        default: [],
-      },
-    };
-  }
-
-  if (node.type === "for-each") {
-    const iteratorExpr =
-      (node.config?.iterator as string) ?? "flow_input.items";
-    return {
-      id: moduleId,
-      summary: "For each",
-      value: {
-        type: "forloopflow",
-        iterator: { type: "javascript", expr: iteratorExpr },
-        modules: [],
-        skip_failures: (node.config?.skipFailures as boolean) ?? false,
-        parallel: (node.config?.parallel as boolean) ?? false,
-      },
     };
   }
 
