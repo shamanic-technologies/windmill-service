@@ -13,6 +13,7 @@ export async function main(
   query?: Record<string, string>,
   serviceEnvs?: Record<string, string>,
   headers?: Record<string, string>,
+  validateResponse?: { field: string; equals: unknown },
 ) {
   // Convert service name to env var prefix: "transactional-email" → "TRANSACTIONAL_EMAIL"
   const envPrefix = service.toUpperCase().replace(/-/g, "_");
@@ -65,9 +66,24 @@ export async function main(
   const text = await response.text();
   if (!text) return {};
 
+  let result: Record<string, unknown>;
   try {
-    return JSON.parse(text);
+    result = JSON.parse(text);
   } catch {
-    return { raw: text };
+    result = { raw: text };
   }
+
+  // Validate response field if configured — throws to stop the flow and trigger onError
+  if (validateResponse) {
+    const actual = result[validateResponse.field];
+    if (actual !== validateResponse.equals) {
+      throw new Error(
+        `${method} ${service}${path} validation failed: ` +
+        `expected ${validateResponse.field}=${JSON.stringify(validateResponse.equals)}, ` +
+        `got ${JSON.stringify(actual)}`
+      );
+    }
+  }
+
+  return result;
 }

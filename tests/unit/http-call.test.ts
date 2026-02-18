@@ -88,4 +88,64 @@ describe("http-call script", () => {
       main("unknown", "GET", "/test", undefined, undefined, serviceEnvs),
     ).rejects.toThrow("Missing: UNKNOWN_SERVICE_URL");
   });
+
+  describe("validateResponse", () => {
+    it("passes when response field matches expected value", async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ allowed: true, reason: "ok" }));
+
+      const result = await main(
+        "campaign", "POST", "/gate-check",
+        { campaignId: "c1" },
+        undefined,
+        serviceEnvs,
+        undefined,
+        { field: "allowed", equals: true },
+      );
+
+      expect(result).toEqual({ allowed: true, reason: "ok" });
+    });
+
+    it("throws when response field does not match (gate-check blocked)", async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ allowed: false, reason: "3 consecutive failures" }));
+
+      await expect(
+        main(
+          "campaign", "POST", "/gate-check",
+          { campaignId: "c1" },
+          undefined,
+          serviceEnvs,
+          undefined,
+          { field: "allowed", equals: true },
+        ),
+      ).rejects.toThrow("validation failed: expected allowed=true, got false");
+    });
+
+    it("throws when response field does not match (fetch-lead empty buffer)", async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ found: false }));
+
+      await expect(
+        main(
+          "lead", "POST", "/buffer/next",
+          { campaignId: "c1" },
+          undefined,
+          serviceEnvs,
+          { "x-app-id": "app-1", "x-org-id": "org-1" },
+          { field: "found", equals: true },
+        ),
+      ).rejects.toThrow("validation failed: expected found=true, got false");
+    });
+
+    it("does not validate when validateResponse is omitted", async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ found: false }));
+
+      const result = await main(
+        "lead", "POST", "/buffer/next",
+        undefined,
+        undefined,
+        serviceEnvs,
+      );
+
+      expect(result).toEqual({ found: false });
+    });
+  });
 });
