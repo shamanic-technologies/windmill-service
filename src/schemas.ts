@@ -27,19 +27,25 @@ export const DAGNodeSchema = z
       "or legacy named types like stripe.createProduct, client.createUser, transactional-email.send."
     ),
     config: z.record(z.unknown()).optional().describe(
-      "Static parameters passed to the node. For http.call: { service, method, path, body?, query? }. " +
+      "Static parameters passed directly to the underlying script as function arguments. " +
+      "For http.call: { service, method, path, body?, query? }. " +
       "For wait: { seconds }. For for-each: { iterator, parallel?, skipFailures? }. " +
-      "Each key becomes a direct parameter of the underlying script."
+      "IMPORTANT: Do NOT put retries or other node-level fields in config — they will be " +
+      "ignored and passed as script parameters instead. Use the top-level retries field."
     ),
     inputMapping: z.record(z.string()).optional().describe(
       "Dynamic input references using $ref syntax. " +
       "Use \"$ref:flow_input.fieldName\" for workflow execution inputs, " +
       "or \"$ref:node-id.output.fieldName\" for a previous node's output. " +
+      "Dot-notation keys (e.g. \"body.campaignId\") are supported — they build nested objects " +
+      "and merge with any same-named config value. " +
       "Keys in inputMapping override same-named keys in config."
     ),
     retries: z.number().int().min(0).optional().describe(
       "Number of retry attempts on failure. Defaults to 3 if omitted. " +
-      "Set to 0 for non-idempotent operations (e.g., sending emails, consuming queue items) to prevent duplicates."
+      "Set to 0 for non-idempotent operations (e.g., sending emails, consuming queue items) " +
+      "to prevent duplicates. " +
+      "MUST be set here at the node level — NOT inside config."
     ),
   })
   .openapi("DAGNode");

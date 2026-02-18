@@ -12,6 +12,7 @@ import {
   DAG_WITH_CUSTOM_RETRIES,
   DAG_WITH_ON_ERROR,
   DAG_WITH_FLOW_INPUT_REFS,
+  DAG_WITH_DOT_NOTATION_AND_STATIC_BASE,
 } from "../helpers/fixtures.js";
 
 describe("dagToOpenFlow", () => {
@@ -308,5 +309,49 @@ describe("dagToOpenFlow", () => {
     const props = (result.schema as Record<string, unknown>).properties as Record<string, unknown>;
     // brandIntel is referenced via $ref:flow_input.brandIntel in email-gen node
     expect(props.brandIntel).toEqual({ type: "string" });
+  });
+
+  it("collapses dot-notation inputMapping keys into nested body object", () => {
+    const result = dagToOpenFlow(DAG_WITH_FLOW_INPUT_REFS, "Dot Notation");
+
+    const mod = result.value.modules[0];
+    if (mod.value.type === "script") {
+      const transforms = mod.value.input_transforms as Record<
+        string,
+        { type: string; value?: unknown; expr?: string }
+      >;
+      // Should NOT have flat dot-notation keys
+      expect(transforms["body.campaignId"]).toBeUndefined();
+      expect(transforms["body.clerkOrgId"]).toBeUndefined();
+      // Should have a collapsed body transform
+      expect(transforms.body).toBeDefined();
+      expect(transforms.body.type).toBe("javascript");
+      expect(transforms.body.expr).toContain("flow_input.campaignId");
+      expect(transforms.body.expr).toContain("flow_input.clerkOrgId");
+    }
+  });
+
+  it("merges dot-notation keys with static config body and handles nested metadata", () => {
+    const result = dagToOpenFlow(DAG_WITH_DOT_NOTATION_AND_STATIC_BASE, "Merge Body");
+
+    const mod = result.value.modules[0];
+    if (mod.value.type === "script") {
+      const transforms = mod.value.input_transforms as Record<
+        string,
+        { type: string; value?: unknown; expr?: string }
+      >;
+      expect(transforms.body).toBeDefined();
+      expect(transforms.body.type).toBe("javascript");
+      const expr = transforms.body.expr!;
+      // Static base should be spread
+      expect(expr).toContain('"cold-email"');
+      expect(expr).toContain('"broadcast"');
+      // Dynamic fields should be present
+      expect(expr).toContain("results.start_run.lead.data.email");
+      expect(expr).toContain("results.start_run.appId");
+      // Nested metadata should merge static source with dynamic emailGenerationId
+      expect(expr).toContain('"source"');
+      expect(expr).toContain("results.email_generate.id");
+    }
   });
 });

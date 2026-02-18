@@ -89,4 +89,61 @@ describe("buildInputTransforms", () => {
     const result = buildInputTransforms(undefined, undefined);
     expect(result).toEqual({});
   });
+
+  it("collapses dot-notation keys into a nested object expression", () => {
+    const result = buildInputTransforms(undefined, {
+      "body.campaignId": "$ref:flow_input.campaignId",
+      "body.clerkOrgId": "$ref:flow_input.clerkOrgId",
+    });
+
+    // Should NOT have flat dot-notation keys
+    expect(result["body.campaignId"]).toBeUndefined();
+    expect(result["body.clerkOrgId"]).toBeUndefined();
+
+    // Should have a single body transform with a JavaScript expression
+    expect(result.body).toBeDefined();
+    expect(result.body.type).toBe("javascript");
+    expect(result.body.expr).toContain("flow_input.campaignId");
+    expect(result.body.expr).toContain("flow_input.clerkOrgId");
+  });
+
+  it("merges dot-notation keys with static config base", () => {
+    const result = buildInputTransforms(
+      { body: { tag: "cold-email", type: "broadcast" } },
+      { "body.to": "$ref:start-run.output.email" },
+    );
+
+    expect(result.body).toBeDefined();
+    expect(result.body.type).toBe("javascript");
+    // Should spread the static base and add the dynamic field
+    expect(result.body.expr).toContain('"cold-email"');
+    expect(result.body.expr).toContain("results.start_run.email");
+  });
+
+  it("merges deeply nested dot-notation with static nested object", () => {
+    const result = buildInputTransforms(
+      { body: { metadata: { source: "test" } } },
+      { "body.metadata.generationId": "$ref:gen.output.id" },
+    );
+
+    expect(result.body).toBeDefined();
+    expect(result.body.type).toBe("javascript");
+    // Should spread the static metadata and add the dynamic field
+    expect(result.body.expr).toContain('"source"');
+    expect(result.body.expr).toContain("results.gen.id");
+  });
+
+  it("leaves non-dot-notation keys untouched", () => {
+    const result = buildInputTransforms(
+      { service: "stripe", method: "GET" },
+      { "body.field": "$ref:flow_input.data" },
+    );
+
+    // Non-dot keys should remain as-is
+    expect(result.service).toEqual({ type: "static", value: "stripe" });
+    expect(result.method).toEqual({ type: "static", value: "GET" });
+    // Dot key should be collapsed
+    expect(result.body).toBeDefined();
+    expect(result.body.type).toBe("javascript");
+  });
 });
