@@ -55,7 +55,7 @@ describe("Polarity workflows", () => {
     it("translates for-each to forloopflow module", () => {
       const openflow = dagToOpenFlow(wf.dag, wf.name);
       const loopModule = openflow.value.modules.find(
-        (m) => m.id === "loop-contacts"
+        (m) => m.id === "loop_contacts"
       );
       expect(loopModule).toBeDefined();
       expect(loopModule!.value.type).toBe("forloopflow");

@@ -24,9 +24,9 @@ describe("dagToOpenFlow", () => {
     expect(result.value.modules).toHaveLength(3);
 
     // Modules should be in topological order
-    expect(result.value.modules[0].id).toBe("lead-search");
-    expect(result.value.modules[1].id).toBe("email-gen");
-    expect(result.value.modules[2].id).toBe("email-send");
+    expect(result.value.modules[0].id).toBe("lead_search");
+    expect(result.value.modules[1].id).toBe("email_gen");
+    expect(result.value.modules[2].id).toBe("email_send");
 
     // First module is a script reference
     const first = result.value.modules[0].value;
@@ -78,7 +78,7 @@ describe("dagToOpenFlow", () => {
   it("translates $ref input mapping to javascript transforms", () => {
     const result = dagToOpenFlow(VALID_LINEAR_DAG, "Ref Test");
 
-    const emailGen = result.value.modules.find((m) => m.id === "email-gen");
+    const emailGen = result.value.modules.find((m) => m.id === "email_gen");
     expect(emailGen).toBeDefined();
     expect(emailGen!.value.type).toBe("script");
 
@@ -130,7 +130,7 @@ describe("dagToOpenFlow", () => {
 
     expect(result.value.modules).toHaveLength(1);
     const mod = result.value.modules[0];
-    expect(mod.id).toBe("get-product");
+    expect(mod.id).toBe("get_product");
     expect(mod.value.type).toBe("script");
 
     if (mod.value.type === "script") {
@@ -149,8 +149,8 @@ describe("dagToOpenFlow", () => {
     const result = dagToOpenFlow(DAG_WITH_HTTP_CALL_CHAIN, "HTTP Chain");
 
     expect(result.value.modules).toHaveLength(2);
-    expect(result.value.modules[0].id).toBe("create-user");
-    expect(result.value.modules[1].id).toBe("send-welcome");
+    expect(result.value.modules[0].id).toBe("create_user");
+    expect(result.value.modules[1].id).toBe("send_welcome");
 
     const sendMod = result.value.modules[1];
     if (sendMod.value.type === "script") {
@@ -235,7 +235,7 @@ describe("dagToOpenFlow", () => {
     const searchMod = result.value.modules.find((m) => m.id === "search");
     expect(searchMod!.retry).toEqual({ constant: { attempts: 5, seconds: 5 } });
 
-    const sendMod = result.value.modules.find((m) => m.id === "send-email");
+    const sendMod = result.value.modules.find((m) => m.id === "send_email");
     expect(sendMod!.retry).toEqual({ constant: { attempts: 0, seconds: 0 } });
   });
 
@@ -253,11 +253,11 @@ describe("dagToOpenFlow", () => {
     const result = dagToOpenFlow(DAG_WITH_ON_ERROR, "Error Handler");
 
     // end-run should NOT be in the main modules list
-    expect(result.value.modules.find((m) => m.id === "end-run")).toBeUndefined();
+    expect(result.value.modules.find((m) => m.id === "end_run")).toBeUndefined();
 
     // failure_module should exist
     expect(result.value.failure_module).toBeDefined();
-    expect(result.value.failure_module!.id).toBe("end-run");
+    expect(result.value.failure_module!.id).toBe("end_run");
     expect(result.value.failure_module!.summary).toBe("onError: end-run");
 
     if (result.value.failure_module!.value.type === "script") {
@@ -363,6 +363,33 @@ describe("dagToOpenFlow", () => {
       expect(transforms.body.expr).toContain("flow_input.campaignId");
       expect(transforms.body.expr).toContain("flow_input.clerkOrgId");
     }
+  });
+
+  it("normalizes hyphenated node ids to underscores in module ids", () => {
+    // Regression: Windmill stores results under the literal module id.
+    // If module id is "start-run" but expressions use "results.start_run",
+    // the lookup fails and results.start_run is null.
+    const result = dagToOpenFlow(VALID_LINEAR_DAG, "Module ID Test");
+
+    for (const mod of result.value.modules) {
+      expect(mod.id).not.toContain("-");
+    }
+
+    // Specifically verify hyphenated node ids become underscored module ids
+    expect(result.value.modules[0].id).toBe("lead_search");
+    expect(result.value.modules[1].id).toBe("email_gen");
+    expect(result.value.modules[2].id).toBe("email_send");
+
+    // Summary should keep the original node id for readability
+    expect(result.value.modules[0].summary).toContain("lead-search");
+  });
+
+  it("normalizes hyphenated failure module id to underscores", () => {
+    const result = dagToOpenFlow(DAG_WITH_ON_ERROR, "Failure Module ID");
+
+    expect(result.value.failure_module).toBeDefined();
+    expect(result.value.failure_module!.id).toBe("end_run");
+    expect(result.value.failure_module!.id).not.toContain("-");
   });
 
   it("merges dot-notation keys with static config body and handles nested metadata", () => {

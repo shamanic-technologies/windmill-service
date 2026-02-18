@@ -119,10 +119,12 @@ function buildModules(orderedNodes: DAGNode[], dag: DAG): FlowModule[] {
 }
 
 function nodeToModule(node: DAGNode, dag: DAG): FlowModule | null {
+  const moduleId = node.id.replace(/-/g, "_");
+
   if (node.type === "wait") {
     const seconds = (node.config?.seconds as number) ?? 0;
     return {
-      id: node.id,
+      id: moduleId,
       summary: `Wait ${seconds}s`,
       value: {
         type: "rawscript",
@@ -144,7 +146,7 @@ function nodeToModule(node: DAGNode, dag: DAG): FlowModule | null {
       }));
 
     return {
-      id: node.id,
+      id: moduleId,
       summary: "Branch",
       value: {
         type: "branchone",
@@ -158,7 +160,7 @@ function nodeToModule(node: DAGNode, dag: DAG): FlowModule | null {
     const iteratorExpr =
       (node.config?.iterator as string) ?? "flow_input.items";
     return {
-      id: node.id,
+      id: moduleId,
       summary: "For each",
       value: {
         type: "forloopflow",
@@ -195,7 +197,7 @@ function nodeToModule(node: DAGNode, dag: DAG): FlowModule | null {
     inputTransforms.serviceEnvs = { type: "javascript", expr: "flow_input.serviceEnvs" };
   }
   const mod: FlowModule = {
-    id: node.id,
+    id: moduleId,
     summary: `${node.type}: ${node.id}`,
     value: {
       type: "script",
@@ -240,8 +242,9 @@ function buildFailureModule(node: DAGNode): FlowModule | null {
     };
   }
 
+  const moduleId = node.id.replace(/-/g, "_");
   return {
-    id: node.id,
+    id: moduleId,
     summary: `onError: ${node.id}`,
     value: {
       type: "script",
