@@ -273,6 +273,45 @@ router.get("/workflow-runs", requireApiKey, async (req, res) => {
   }
 });
 
+// GET /workflow-runs/:id/debug — Get per-step execution details from Windmill
+router.get("/workflow-runs/:id/debug", requireApiKey, async (req, res) => {
+  try {
+    const [run] = await db
+      .select()
+      .from(workflowRuns)
+      .where(eq(workflowRuns.id, req.params.id));
+
+    if (!run) {
+      res.status(404).json({ error: "Workflow run not found" });
+      return;
+    }
+
+    if (!run.windmillJobId) {
+      res.status(400).json({ error: "Run has no Windmill job ID" });
+      return;
+    }
+
+    const debugClient = getWindmillClient();
+    if (!debugClient) {
+      res.status(503).json({ error: "Windmill client not configured" });
+      return;
+    }
+
+    const job = await debugClient.getJob(run.windmillJobId);
+
+    res.json({
+      runId: run.id,
+      windmillJobId: run.windmillJobId,
+      status: run.status,
+      flowStatus: job.flow_status ?? null,
+      result: job.result ?? null,
+    });
+  } catch (err) {
+    console.error("[workflow-runs] GET debug error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // POST /workflow-runs/:id/cancel — Cancel a run
 router.post("/workflow-runs/:id/cancel", requireApiKey, async (req, res) => {
   try {

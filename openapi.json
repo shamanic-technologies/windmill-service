@@ -405,6 +405,34 @@
           }
         }
       },
+      "WorkflowRunDebugResponse": {
+        "type": "object",
+        "properties": {
+          "runId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "windmillJobId": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          },
+          "flowStatus": {
+            "nullable": true,
+            "description": "Windmill flow_status object. Contains per-module execution details including resolved inputs, outputs, and timing for each step in the flow."
+          },
+          "result": {
+            "nullable": true,
+            "description": "Final flow result."
+          }
+        },
+        "required": [
+          "runId",
+          "windmillJobId",
+          "status"
+        ]
+      },
       "DeployWorkflowResult": {
         "type": "object",
         "properties": {
@@ -905,6 +933,53 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/WorkflowRunResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/workflow-runs/{id}/debug": {
+      "get": {
+        "summary": "Debug a workflow run",
+        "description": "Returns per-step execution details from the Windmill engine, including resolved inputs and outputs for each module. Use this to diagnose runtime issues that aren't visible in the final result.",
+        "tags": [
+          "Workflow Runs"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Debug details",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowRunDebugResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Run not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
                 }
               }
             }
