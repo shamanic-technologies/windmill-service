@@ -428,6 +428,46 @@ registry.registerPath({
   },
 });
 
+export const WorkflowRunDebugResponseSchema = z
+  .object({
+    runId: z.string().uuid(),
+    windmillJobId: z.string(),
+    status: z.string(),
+    flowStatus: z.unknown().nullable().describe(
+      "Windmill flow_status object. Contains per-module execution details including " +
+      "resolved inputs, outputs, and timing for each step in the flow."
+    ),
+    result: z.unknown().nullable().describe("Final flow result."),
+  })
+  .openapi("WorkflowRunDebugResponse");
+
+registry.registerPath({
+  method: "get",
+  path: "/workflow-runs/{id}/debug",
+  summary: "Debug a workflow run",
+  description:
+    "Returns per-step execution details from the Windmill engine, including " +
+    "resolved inputs and outputs for each module. Use this to diagnose " +
+    "runtime issues that aren't visible in the final result.",
+  tags: ["Workflow Runs"],
+  security: [{ apiKey: [] }],
+  request: {
+    params: z.object({ id: z.string().uuid() }),
+  },
+  responses: {
+    200: {
+      description: "Debug details",
+      content: {
+        "application/json": { schema: WorkflowRunDebugResponseSchema },
+      },
+    },
+    404: {
+      description: "Run not found",
+      content: { "application/json": { schema: ErrorResponseSchema } },
+    },
+  },
+});
+
 registry.registerPath({
   method: "get",
   path: "/workflow-runs",

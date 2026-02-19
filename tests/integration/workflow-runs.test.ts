@@ -346,6 +346,126 @@ describe("GET /workflow-runs/:id", () => {
   });
 });
 
+describe("GET /workflow-runs/:id/debug", () => {
+  beforeEach(() => {
+    mockWorkflows.length = 0;
+    mockRuns.length = 0;
+    mockGetJob.mockClear();
+  });
+
+  it("returns flow_status from Windmill for a completed run", async () => {
+    const flowStatus = {
+      step: 3,
+      modules: [
+        { id: "fetch_lead", type: "Success", result: { found: true, lead: { data: { firstName: "Alice" } } } },
+        { id: "email_generate", type: "Success", result: { subject: "Hello Alice", bodyHtml: "<p>Hi Alice</p>" } },
+        { id: "email_send", type: "Success", result: { success: true } },
+      ],
+    };
+    mockGetJob.mockResolvedValueOnce({
+      id: "job-uuid-789",
+      running: false,
+      success: true,
+      result: { status: "completed" },
+      flow_status: flowStatus,
+    });
+
+    mockRuns.push({
+      id: "run-debug-1",
+      workflowId: "wf-1",
+      orgId: "org-1",
+      status: "completed",
+      windmillJobId: "job-uuid-789",
+      windmillWorkspace: "prod",
+      inputs: { campaignId: "camp-1" },
+      result: { status: "completed" },
+      error: null,
+      startedAt: new Date(),
+      completedAt: new Date(),
+      createdAt: new Date(),
+    });
+
+    const res = await request
+      .get("/workflow-runs/run-debug-1/debug")
+      .set(AUTH);
+
+    expect(res.status).toBe(200);
+    expect(res.body.runId).toBe("run-debug-1");
+    expect(res.body.windmillJobId).toBe("job-uuid-789");
+    expect(res.body.flowStatus).toEqual(flowStatus);
+    expect(res.body.flowStatus.modules).toHaveLength(3);
+    expect(res.body.flowStatus.modules[0].result.lead.data.firstName).toBe("Alice");
+  });
+
+  it("returns 404 for unknown run", async () => {
+    const res = await request
+      .get("/workflow-runs/nonexistent/debug")
+      .set(AUTH);
+
+    expect(res.status).toBe(404);
+  });
+
+  it("returns 400 if run has no windmill job ID", async () => {
+    mockRuns.push({
+      id: "run-no-job",
+      workflowId: "wf-1",
+      orgId: "org-1",
+      status: "queued",
+      windmillJobId: null,
+      windmillWorkspace: "prod",
+      inputs: {},
+      result: null,
+      error: null,
+      startedAt: null,
+      completedAt: null,
+      createdAt: new Date(),
+    });
+
+    const res = await request
+      .get("/workflow-runs/run-no-job/debug")
+      .set(AUTH);
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toContain("no Windmill job ID");
+  });
+
+  it("returns null flowStatus when Windmill has no flow_status", async () => {
+    mockGetJob.mockResolvedValueOnce({
+      id: "job-uuid-simple",
+      running: false,
+      success: true,
+      result: { output: "done" },
+    });
+
+    mockRuns.push({
+      id: "run-simple",
+      workflowId: "wf-1",
+      orgId: "org-1",
+      status: "completed",
+      windmillJobId: "job-uuid-simple",
+      windmillWorkspace: "prod",
+      inputs: {},
+      result: null,
+      error: null,
+      startedAt: new Date(),
+      completedAt: new Date(),
+      createdAt: new Date(),
+    });
+
+    const res = await request
+      .get("/workflow-runs/run-simple/debug")
+      .set(AUTH);
+
+    expect(res.status).toBe(200);
+    expect(res.body.flowStatus).toBeNull();
+  });
+
+  it("requires authentication", async () => {
+    const res = await request.get("/workflow-runs/run-1/debug");
+    expect(res.status).toBe(401);
+  });
+});
+
 describe("POST /workflow-runs/:id/cancel", () => {
   beforeEach(() => {
     mockWorkflows.length = 0;
