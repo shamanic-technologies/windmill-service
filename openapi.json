@@ -40,6 +40,15 @@
           "service"
         ]
       },
+      "WorkflowCategory": {
+        "type": "string",
+        "nullable": true,
+        "enum": [
+          "sales",
+          "pr"
+        ],
+        "description": "Workflow category (sales, pr)."
+      },
       "WorkflowResponse": {
         "type": "object",
         "properties": {
@@ -73,9 +82,17 @@
             "type": "string",
             "description": "Workflow name. Use this with appId to execute via /workflows/by-name/{name}/execute."
           },
+          "displayName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Human-readable display name. Falls back to name if not set."
+          },
           "description": {
             "type": "string",
             "nullable": true
+          },
+          "category": {
+            "$ref": "#/components/schemas/WorkflowCategory"
           },
           "dag": {
             "nullable": true,
@@ -109,7 +126,9 @@
           "campaignId",
           "subrequestId",
           "name",
+          "displayName",
           "description",
+          "category",
           "windmillFlowPath",
           "windmillWorkspace",
           "status",
@@ -443,6 +462,20 @@
           "name": {
             "type": "string"
           },
+          "displayName": {
+            "type": "string",
+            "nullable": true
+          },
+          "category": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WorkflowCategory"
+              },
+              {
+                "description": "Workflow category."
+              }
+            ]
+          },
           "action": {
             "type": "string",
             "enum": [
@@ -454,6 +487,8 @@
         "required": [
           "id",
           "name",
+          "displayName",
+          "category",
           "action"
         ]
       },
@@ -477,11 +512,26 @@
           "name": {
             "type": "string",
             "minLength": 1,
-            "description": "Workflow name. Must be unique within the appId. Used to execute via /workflows/by-name/{name}/execute."
+            "pattern": "^[a-z0-9][a-z0-9-]*$",
+            "description": "Workflow name (slug). Must be unique within the appId. Used to execute via /workflows/by-name/{name}/execute."
+          },
+          "displayName": {
+            "type": "string",
+            "description": "Human-readable display name for dashboards. Falls back to name if not set."
           },
           "description": {
             "type": "string",
             "description": "Human-readable description."
+          },
+          "category": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WorkflowCategory"
+              },
+              {
+                "description": "Workflow category."
+              }
+            ]
           },
           "dag": {
             "$ref": "#/components/schemas/DAG"
@@ -634,6 +684,14 @@
               "type": "string"
             },
             "required": false,
+            "name": "appId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
             "name": "brandId",
             "in": "query"
           },
@@ -643,6 +701,22 @@
             },
             "required": false,
             "name": "campaignId",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/WorkflowCategory"
+                },
+                {
+                  "description": "Workflow category."
+                }
+              ]
+            },
+            "required": false,
+            "description": "Workflow category.",
+            "name": "category",
             "in": "query"
           },
           {

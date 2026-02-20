@@ -159,6 +159,30 @@ describe("GET /workflows", () => {
     expect(res.status).toBe(200);
     expect(res.body.workflows).toBeDefined();
   });
+
+  it("returns displayName and category in response", async () => {
+    mockDbRows.push({
+      id: "wf-1",
+      orgId: "org-1",
+      appId: "my-app",
+      name: "sales-flow",
+      displayName: "Sales Flow",
+      category: "sales",
+      status: "active",
+      dag: VALID_LINEAR_DAG,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const res = await request
+      .get("/workflows")
+      .query({ orgId: "org-1" })
+      .set(AUTH);
+
+    expect(res.status).toBe(200);
+    expect(res.body.workflows[0].displayName).toBe("Sales Flow");
+    expect(res.body.workflows[0].category).toBe("sales");
+  });
 });
 
 describe("PUT /workflows/deploy", () => {
@@ -220,6 +244,138 @@ describe("PUT /workflows/deploy", () => {
     expect(res.status).toBe(200);
     expect(res.body.workflows).toHaveLength(1);
     expect(res.body.workflows[0].action).toBe("updated");
+  });
+
+  it("accepts displayName and category on deploy", async () => {
+    const res = await request
+      .put("/workflows/deploy")
+      .set(AUTH)
+      .send({
+        appId: "kevinlourd-com",
+        workflows: [
+          {
+            name: "sales-cold-email-v1",
+            displayName: "Sales Cold Email Outreach",
+            category: "sales",
+            description: "3-email sequence",
+            dag: DAG_WITH_TRANSACTIONAL_EMAIL_SEND,
+          },
+        ],
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.workflows).toHaveLength(1);
+    expect(res.body.workflows[0].action).toBe("created");
+    expect(res.body.workflows[0].displayName).toBe("Sales Cold Email Outreach");
+    expect(res.body.workflows[0].category).toBe("sales");
+  });
+
+  it("returns null displayName/category when not provided", async () => {
+    const res = await request
+      .put("/workflows/deploy")
+      .set(AUTH)
+      .send({
+        appId: "kevinlourd-com",
+        workflows: [
+          {
+            name: "basic-flow",
+            dag: DAG_WITH_TRANSACTIONAL_EMAIL_SEND,
+          },
+        ],
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.workflows[0].displayName).toBeNull();
+    expect(res.body.workflows[0].category).toBeNull();
+  });
+
+  it("rejects invalid category values", async () => {
+    const res = await request
+      .put("/workflows/deploy")
+      .set(AUTH)
+      .send({
+        appId: "kevinlourd-com",
+        workflows: [
+          {
+            name: "bad-category-flow",
+            category: "invalid-category",
+            dag: DAG_WITH_TRANSACTIONAL_EMAIL_SEND,
+          },
+        ],
+      });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects non-slug name format", async () => {
+    const res = await request
+      .put("/workflows/deploy")
+      .set(AUTH)
+      .send({
+        appId: "kevinlourd-com",
+        workflows: [
+          {
+            name: "My Flow With Spaces",
+            dag: DAG_WITH_TRANSACTIONAL_EMAIL_SEND,
+          },
+        ],
+      });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects name starting with hyphen", async () => {
+    const res = await request
+      .put("/workflows/deploy")
+      .set(AUTH)
+      .send({
+        appId: "kevinlourd-com",
+        workflows: [
+          {
+            name: "-leading-hyphen",
+            dag: DAG_WITH_TRANSACTIONAL_EMAIL_SEND,
+          },
+        ],
+      });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("preserves displayName/category on update", async () => {
+    mockDbRows.push({
+      id: "wf-existing",
+      appId: "kevinlourd-com",
+      orgId: "kevinlourd-com",
+      name: "newsletter-subscribe",
+      displayName: "Newsletter Signup",
+      category: "sales",
+      description: "Old description",
+      status: "active",
+      dag: DAG_WITH_TRANSACTIONAL_EMAIL_SEND,
+      windmillFlowPath: "f/workflows/kevinlourd-com/newsletter_subscribe",
+      windmillWorkspace: "prod",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const res = await request
+      .put("/workflows/deploy")
+      .set(AUTH)
+      .send({
+        appId: "kevinlourd-com",
+        workflows: [
+          {
+            name: "newsletter-subscribe",
+            description: "Updated description",
+            dag: DAG_WITH_TRANSACTIONAL_EMAIL_SEND,
+          },
+        ],
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.workflows[0].action).toBe("updated");
+    expect(res.body.workflows[0].displayName).toBe("Newsletter Signup");
+    expect(res.body.workflows[0].category).toBe("sales");
   });
 
   it("rejects if any DAG is invalid (no partial writes)", async () => {

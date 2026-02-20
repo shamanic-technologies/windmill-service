@@ -15,6 +15,13 @@
       "when": 1771152306410,
       "tag": "0001_add_app_id",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1771238706410,
+      "tag": "0002_add_workflow_metadata",
+      "breakpoints": true
     }
   ]
 }

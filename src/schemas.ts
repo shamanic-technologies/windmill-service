@@ -87,6 +87,13 @@ export const DAGSchema = z
   })
   .openapi("DAG");
 
+// --- Workflow enums ---
+
+export const WorkflowCategorySchema = z
+  .enum(["sales", "pr"])
+  .describe("Workflow category.")
+  .openapi("WorkflowCategory");
+
 // --- Workflow schemas ---
 
 export const CreateWorkflowSchema = z
@@ -118,7 +125,9 @@ export const WorkflowResponseSchema = z
     campaignId: z.string().nullable(),
     subrequestId: z.string().nullable(),
     name: z.string().describe("Workflow name. Use this with appId to execute via /workflows/by-name/{name}/execute."),
+    displayName: z.string().nullable().describe("Human-readable display name. Falls back to name if not set."),
     description: z.string().nullable(),
+    category: WorkflowCategorySchema.nullable().describe("Workflow category (sales, pr)."),
     dag: z.unknown().describe("The DAG definition as submitted."),
     windmillFlowPath: z.string().nullable().describe("Internal Windmill flow path (managed automatically)."),
     windmillWorkspace: z.string().describe("Windmill workspace (managed automatically)."),
@@ -175,8 +184,10 @@ export const WorkflowRunResponseSchema = z
 
 export const DeployWorkflowItemSchema = z
   .object({
-    name: z.string().min(1).describe("Workflow name. Must be unique within the appId. Used to execute via /workflows/by-name/{name}/execute."),
+    name: z.string().min(1).regex(/^[a-z0-9][a-z0-9-]*$/, "name must be a lowercase slug (letters, digits, hyphens, cannot start with hyphen)").describe("Workflow name (slug). Must be unique within the appId. Used to execute via /workflows/by-name/{name}/execute."),
+    displayName: z.string().optional().describe("Human-readable display name for dashboards. Falls back to name if not set."),
     description: z.string().optional().describe("Human-readable description."),
+    category: WorkflowCategorySchema.optional().describe("Workflow category."),
     dag: DAGSchema,
   })
   .openapi("DeployWorkflowItem");
@@ -195,6 +206,8 @@ export const DeployWorkflowResultSchema = z
   .object({
     id: z.string().uuid(),
     name: z.string(),
+    displayName: z.string().nullable(),
+    category: WorkflowCategorySchema.nullable(),
     action: z.enum(["created", "updated"]),
   })
   .openapi("DeployWorkflowResult");
@@ -284,8 +297,10 @@ registry.registerPath({
   request: {
     query: z.object({
       orgId: z.string(),
+      appId: z.string().optional(),
       brandId: z.string().optional(),
       campaignId: z.string().optional(),
+      category: WorkflowCategorySchema.optional(),
       status: z.string().optional(),
     }),
   },

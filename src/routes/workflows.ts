@@ -108,7 +108,7 @@ router.put("/workflows/deploy", requireApiKey, async (req, res) => {
       return;
     }
 
-    const results: { id: string; name: string; action: "created" | "updated" }[] = [];
+    const results: { id: string; name: string; displayName: string | null; category: string | null; action: "created" | "updated" }[] = [];
 
     for (const wf of body.workflows) {
       const dag = wf.dag as DAG;
@@ -146,14 +146,16 @@ router.put("/workflows/deploy", requireApiKey, async (req, res) => {
         const [updated] = await db
           .update(workflows)
           .set({
+            displayName: wf.displayName ?? existing.displayName,
             description: wf.description ?? existing.description,
+            category: wf.category ?? existing.category,
             dag: wf.dag,
             updatedAt: new Date(),
           })
           .where(eq(workflows.id, existing.id))
           .returning();
 
-        results.push({ id: updated.id, name: updated.name, action: "updated" });
+        results.push({ id: updated.id, name: updated.name, displayName: updated.displayName, category: updated.category, action: "updated" });
       } else {
         // Create new workflow
         if (client) {
@@ -176,14 +178,16 @@ router.put("/workflows/deploy", requireApiKey, async (req, res) => {
             appId: body.appId,
             orgId: body.appId,
             name: wf.name,
+            displayName: wf.displayName ?? null,
             description: wf.description,
+            category: wf.category ?? null,
             dag: wf.dag,
             windmillFlowPath: flowPath,
             status: "active",
           })
           .returning();
 
-        results.push({ id: created.id, name: created.name, action: "created" });
+        results.push({ id: created.id, name: created.name, displayName: created.displayName, category: created.category, action: "created" });
       }
     }
 
@@ -201,7 +205,7 @@ router.put("/workflows/deploy", requireApiKey, async (req, res) => {
 // GET /workflows — List workflows
 router.get("/workflows", requireApiKey, async (req, res) => {
   try {
-    const { orgId, brandId, campaignId, status } = req.query;
+    const { orgId, appId, brandId, campaignId, category, status } = req.query;
 
     if (!orgId || typeof orgId !== "string") {
       res.status(400).json({ error: "orgId query parameter is required" });
@@ -212,11 +216,17 @@ router.get("/workflows", requireApiKey, async (req, res) => {
       eq(workflows.orgId, orgId),
     ];
 
+    if (appId && typeof appId === "string") {
+      conditions.push(eq(workflows.appId, appId));
+    }
     if (brandId && typeof brandId === "string") {
       conditions.push(eq(workflows.brandId, brandId));
     }
     if (campaignId && typeof campaignId === "string") {
       conditions.push(eq(workflows.campaignId, campaignId));
+    }
+    if (category && typeof category === "string") {
+      conditions.push(eq(workflows.category, category));
     }
     if (status && typeof status === "string") {
       conditions.push(eq(workflows.status, status));
