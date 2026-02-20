@@ -7,7 +7,7 @@ const generator = new OpenApiGeneratorV3(registry.definitions);
 const document = generator.generateDocument({
   openapi: "3.0.0",
   info: {
-    title: "Windmill Service",
+    title: "Workflow Service",
     description: [
       "Workflow orchestration service. Register DAG workflows once, execute them by name with runtime inputs.",
       "",
@@ -90,9 +90,9 @@ const document = generator.generateDocument({
       '    body: JSON.stringify({ appId: "my-app", provider: "stripe", apiKey: STRIPE_SECRET_KEY }),',
       "  });",
       "  // Deploy workflows",
-      "  await fetch(`${WINDMILL_SERVICE_URL}/workflows/deploy`, {",
+      "  await fetch(`${WORKFLOW_SERVICE_URL}/workflows/deploy`, {",
       '    method: "PUT",',
-      '    headers: { "Content-Type": "application/json", "x-api-key": WINDMILL_SERVICE_API_KEY },',
+      '    headers: { "Content-Type": "application/json", "x-api-key": WORKFLOW_SERVICE_API_KEY },',
       '    body: JSON.stringify({ appId: "my-app", workflows: [{ name: "my-flow", dag: { ... } }] }),',
       "  });",
       "}",

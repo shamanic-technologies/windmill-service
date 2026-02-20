@@ -1,7 +1,7 @@
 // Windmill node script — generic HTTP call to any microservice.
 //
 // Resolves service URLs and API keys from serviceEnvs (injected via flow_input
-// by windmill-service) with a fallback to Bun.env for backward compatibility.
+// by workflow-service) with a fallback to Bun.env for backward compatibility.
 //
 // Convention: {SERVICE}_SERVICE_URL and {SERVICE}_SERVICE_API_KEY.
 // Example: service "stripe" → STRIPE_SERVICE_URL, STRIPE_SERVICE_API_KEY.

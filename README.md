@@ -1,4 +1,4 @@
-# windmill-service
+# workflow-service
 
 Workflow orchestration service wrapping Windmill. Translates internal DAG format to Windmill OpenFlow, manages workflow lifecycle, and tracks executions.
 
@@ -17,9 +17,9 @@ npm run dev
 | `WINDMILL_SERVER_URL` | Windmill instance URL |
 | `WINDMILL_SERVER_API_KEY` | Windmill Bearer token |
 | `WINDMILL_SERVER_WORKSPACE` | Windmill workspace (default: `prod`) |
-| `WINDMILL_SERVICE_DATABASE_URL` | Neon Postgres connection string |
-| `WINDMILL_SERVICE_API_KEY` | API key for incoming service-to-service auth |
-| `WINDMILL_SERVICE_URL` | Public URL of this service |
+| `WORKFLOW_SERVICE_DATABASE_URL` | Neon Postgres connection string |
+| `WORKFLOW_SERVICE_API_KEY` | API key for incoming service-to-service auth |
+| `WORKFLOW_SERVICE_URL` | Public URL of this service |
 | `PORT` | HTTP port (default: `3000`) |
 
 ## API Endpoints

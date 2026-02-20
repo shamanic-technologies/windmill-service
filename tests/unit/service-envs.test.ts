@@ -55,14 +55,14 @@ describe("collectServiceEnvs", () => {
   it("excludes internal Windmill vars", () => {
     process.env.WINDMILL_SERVER_URL = "https://windmill.internal";
     process.env.WINDMILL_SERVER_API_KEY = "wm_key";
-    process.env.WINDMILL_SERVICE_DATABASE_URL = "postgresql://localhost/db";
+    process.env.WORKFLOW_SERVICE_DATABASE_URL = "postgresql://localhost/db";
     process.env.STRIPE_SERVICE_URL = "https://stripe.example.com";
 
     const result = collectServiceEnvs();
 
     expect(result.WINDMILL_SERVER_URL).toBeUndefined();
     expect(result.WINDMILL_SERVER_API_KEY).toBeUndefined();
-    expect(result.WINDMILL_SERVICE_DATABASE_URL).toBeUndefined();
+    expect(result.WORKFLOW_SERVICE_DATABASE_URL).toBeUndefined();
     expect(result.STRIPE_SERVICE_URL).toBe("https://stripe.example.com");
   });
 

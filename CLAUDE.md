@@ -1,6 +1,6 @@
-# Windmill Service
+# Workflow Service
 
-Wrapper service for Windmill workflow engine. Translates internal DAG format to Windmill OpenFlow, manages workflow lifecycle, and tracks executions.
+Workflow orchestration service powered by Windmill. Translates internal DAG format to Windmill OpenFlow, manages workflow lifecycle, and tracks executions.
 
 ## Commands
 - `npm test` — run all tests (Vitest)

@@ -1,5 +1,5 @@
 /**
- * Collects all service URL and API key env vars from the windmill-service process.
+ * Collects all service URL and API key env vars from the workflow-service process.
  *
  * These are injected into flow_input as `serviceEnvs` so Windmill scripts can
  * read them directly instead of relying on WHITELIST_ENVS (which is unreliable).
@@ -11,7 +11,7 @@
 const EXCLUDE = new Set([
   "WINDMILL_SERVER_URL",
   "WINDMILL_SERVER_API_KEY",
-  "WINDMILL_SERVICE_DATABASE_URL",
+  "WORKFLOW_SERVICE_DATABASE_URL",
 ]);
 
 export function collectServiceEnvs(): Record<string, string> {

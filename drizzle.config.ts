@@ -5,6 +5,6 @@ export default defineConfig({
   out: "./drizzle",
   dialect: "postgresql",
   dbCredentials: {
-    url: process.env.WINDMILL_SERVICE_DATABASE_URL!,
+    url: process.env.WORKFLOW_SERVICE_DATABASE_URL!,
   },
 });

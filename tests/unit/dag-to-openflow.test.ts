@@ -228,7 +228,7 @@ describe("dagToOpenFlow", () => {
     expect(result.schema).toBeDefined();
     const props = (result.schema as Record<string, unknown>).properties as Record<string, unknown>;
     expect(props.appId).toEqual({ type: "string", description: "Application identifier" });
-    expect(props.serviceEnvs).toEqual({ type: "object", description: "Service URLs and API keys injected by windmill-service" });
+    expect(props.serviceEnvs).toEqual({ type: "object", description: "Service URLs and API keys injected by workflow-service" });
   });
 
   it("generates valid OpenFlow schema structure", () => {

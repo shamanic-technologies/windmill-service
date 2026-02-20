@@ -30,7 +30,7 @@ router.get("/health", async (_req, res) => {
 
   res.status(allOk ? 200 : 503).json({
     status: allOk ? "ok" : "degraded",
-    service: "windmill-service",
+    service: "workflow-service",
     ...checks,
   });
 });

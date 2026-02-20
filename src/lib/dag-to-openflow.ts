@@ -69,7 +69,7 @@ export function dagToOpenFlow(dag: DAG, name: string): OpenFlow {
   // Collect all flow_input fields referenced by any node so Windmill accepts them
   const schemaProperties: Record<string, { type: string; description?: string }> = {
     appId: { type: "string", description: "Application identifier" },
-    serviceEnvs: { type: "object", description: "Service URLs and API keys injected by windmill-service" },
+    serviceEnvs: { type: "object", description: "Service URLs and API keys injected by workflow-service" },
   };
   for (const node of dag.nodes) {
     if (!node.inputMapping) continue;

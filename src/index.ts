@@ -44,7 +44,7 @@ if (process.env.NODE_ENV !== "test") {
       }
 
       app.listen(Number(PORT), "::", () => {
-        console.log(`windmill-service running on port ${PORT}`);
+        console.log(`workflow-service running on port ${PORT}`);
       });
     } catch (err) {
       console.error("Startup failed:", err);

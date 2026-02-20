@@ -1,20 +1,20 @@
 /**
- * Seeds the 6 Polarity webinar workflows into windmill-service.
+ * Seeds the 6 Polarity webinar workflows into workflow-service.
  *
  * Usage:
- *   WINDMILL_SERVICE_URL=http://localhost:3000 \
- *   WINDMILL_SERVICE_API_KEY=xxx \
+ *   WORKFLOW_SERVICE_URL=http://localhost:3000 \
+ *   WORKFLOW_SERVICE_API_KEY=xxx \
  *   npx tsx scripts/seed-polarity.ts
  */
 
 import { POLARITY_WORKFLOWS } from "../src/workflows/polarity/index.js";
 
 const SERVICE_URL =
-  process.env.WINDMILL_SERVICE_URL ?? "http://localhost:3000";
-const API_KEY = process.env.WINDMILL_SERVICE_API_KEY;
+  process.env.WORKFLOW_SERVICE_URL ?? "http://localhost:3000";
+const API_KEY = process.env.WORKFLOW_SERVICE_API_KEY;
 
 if (!API_KEY) {
-  console.error("WINDMILL_SERVICE_API_KEY is required");
+  console.error("WORKFLOW_SERVICE_API_KEY is required");
   process.exit(1);
 }
 
