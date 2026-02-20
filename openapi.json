@@ -49,6 +49,22 @@
         ],
         "description": "Workflow category (sales, pr)."
       },
+      "WorkflowChannel": {
+        "type": "string",
+        "nullable": true,
+        "enum": [
+          "email"
+        ],
+        "description": "Workflow distribution channel (email)."
+      },
+      "WorkflowAudienceType": {
+        "type": "string",
+        "nullable": true,
+        "enum": [
+          "cold-outreach"
+        ],
+        "description": "Workflow audience type (cold-outreach)."
+      },
       "WorkflowResponse": {
         "type": "object",
         "properties": {
@@ -94,6 +110,12 @@
           "category": {
             "$ref": "#/components/schemas/WorkflowCategory"
           },
+          "channel": {
+            "$ref": "#/components/schemas/WorkflowChannel"
+          },
+          "audienceType": {
+            "$ref": "#/components/schemas/WorkflowAudienceType"
+          },
           "dag": {
             "nullable": true,
             "description": "The DAG definition as submitted."
@@ -129,6 +151,8 @@
           "displayName",
           "description",
           "category",
+          "channel",
+          "audienceType",
           "windmillFlowPath",
           "windmillWorkspace",
           "status",
@@ -476,6 +500,26 @@
               }
             ]
           },
+          "channel": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WorkflowChannel"
+              },
+              {
+                "description": "Workflow distribution channel."
+              }
+            ]
+          },
+          "audienceType": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WorkflowAudienceType"
+              },
+              {
+                "description": "Workflow audience type."
+              }
+            ]
+          },
           "action": {
             "type": "string",
             "enum": [
@@ -489,6 +533,8 @@
           "name",
           "displayName",
           "category",
+          "channel",
+          "audienceType",
           "action"
         ]
       },
@@ -530,6 +576,26 @@
               },
               {
                 "description": "Workflow category."
+              }
+            ]
+          },
+          "channel": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WorkflowChannel"
+              },
+              {
+                "description": "Workflow distribution channel."
+              }
+            ]
+          },
+          "audienceType": {
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/WorkflowAudienceType"
+              },
+              {
+                "description": "Workflow audience type."
               }
             ]
           },
@@ -717,6 +783,38 @@
             "required": false,
             "description": "Workflow category.",
             "name": "category",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/WorkflowChannel"
+                },
+                {
+                  "description": "Workflow distribution channel."
+                }
+              ]
+            },
+            "required": false,
+            "description": "Workflow distribution channel.",
+            "name": "channel",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/WorkflowAudienceType"
+                },
+                {
+                  "description": "Workflow audience type."
+                }
+              ]
+            },
+            "required": false,
+            "description": "Workflow audience type.",
+            "name": "audienceType",
             "in": "query"
           },
           {

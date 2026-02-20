@@ -94,6 +94,16 @@ export const WorkflowCategorySchema = z
   .describe("Workflow category.")
   .openapi("WorkflowCategory");
 
+export const WorkflowChannelSchema = z
+  .enum(["email"])
+  .describe("Workflow distribution channel.")
+  .openapi("WorkflowChannel");
+
+export const WorkflowAudienceTypeSchema = z
+  .enum(["cold-outreach"])
+  .describe("Workflow audience type.")
+  .openapi("WorkflowAudienceType");
+
 // --- Workflow schemas ---
 
 export const CreateWorkflowSchema = z
@@ -128,6 +138,8 @@ export const WorkflowResponseSchema = z
     displayName: z.string().nullable().describe("Human-readable display name. Falls back to name if not set."),
     description: z.string().nullable(),
     category: WorkflowCategorySchema.nullable().describe("Workflow category (sales, pr)."),
+    channel: WorkflowChannelSchema.nullable().describe("Workflow distribution channel (email)."),
+    audienceType: WorkflowAudienceTypeSchema.nullable().describe("Workflow audience type (cold-outreach)."),
     dag: z.unknown().describe("The DAG definition as submitted."),
     windmillFlowPath: z.string().nullable().describe("Internal Windmill flow path (managed automatically)."),
     windmillWorkspace: z.string().describe("Windmill workspace (managed automatically)."),
@@ -188,6 +200,8 @@ export const DeployWorkflowItemSchema = z
     displayName: z.string().optional().describe("Human-readable display name for dashboards. Falls back to name if not set."),
     description: z.string().optional().describe("Human-readable description."),
     category: WorkflowCategorySchema.optional().describe("Workflow category."),
+    channel: WorkflowChannelSchema.optional().describe("Workflow distribution channel."),
+    audienceType: WorkflowAudienceTypeSchema.optional().describe("Workflow audience type."),
     dag: DAGSchema,
   })
   .openapi("DeployWorkflowItem");
@@ -208,6 +222,8 @@ export const DeployWorkflowResultSchema = z
     name: z.string(),
     displayName: z.string().nullable(),
     category: WorkflowCategorySchema.nullable(),
+    channel: WorkflowChannelSchema.nullable(),
+    audienceType: WorkflowAudienceTypeSchema.nullable(),
     action: z.enum(["created", "updated"]),
   })
   .openapi("DeployWorkflowResult");
@@ -301,6 +317,8 @@ registry.registerPath({
       brandId: z.string().optional(),
       campaignId: z.string().optional(),
       category: WorkflowCategorySchema.optional(),
+      channel: WorkflowChannelSchema.optional(),
+      audienceType: WorkflowAudienceTypeSchema.optional(),
       status: z.string().optional(),
     }),
   },

@@ -270,7 +270,31 @@ describe("PUT /workflows/deploy", () => {
     expect(res.body.workflows[0].category).toBe("sales");
   });
 
-  it("returns null displayName/category when not provided", async () => {
+  it("accepts all three dimension enums on deploy", async () => {
+    const res = await request
+      .put("/workflows/deploy")
+      .set(AUTH)
+      .send({
+        appId: "kevinlourd-com",
+        workflows: [
+          {
+            name: "full-metadata-flow",
+            displayName: "Full Metadata",
+            category: "sales",
+            channel: "email",
+            audienceType: "cold-outreach",
+            dag: DAG_WITH_TRANSACTIONAL_EMAIL_SEND,
+          },
+        ],
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.workflows[0].category).toBe("sales");
+    expect(res.body.workflows[0].channel).toBe("email");
+    expect(res.body.workflows[0].audienceType).toBe("cold-outreach");
+  });
+
+  it("returns null for all dimension fields when not provided", async () => {
     const res = await request
       .put("/workflows/deploy")
       .set(AUTH)
@@ -287,6 +311,44 @@ describe("PUT /workflows/deploy", () => {
     expect(res.status).toBe(200);
     expect(res.body.workflows[0].displayName).toBeNull();
     expect(res.body.workflows[0].category).toBeNull();
+    expect(res.body.workflows[0].channel).toBeNull();
+    expect(res.body.workflows[0].audienceType).toBeNull();
+  });
+
+  it("rejects invalid channel value", async () => {
+    const res = await request
+      .put("/workflows/deploy")
+      .set(AUTH)
+      .send({
+        appId: "kevinlourd-com",
+        workflows: [
+          {
+            name: "bad-channel-flow",
+            channel: "smoke-signal",
+            dag: DAG_WITH_TRANSACTIONAL_EMAIL_SEND,
+          },
+        ],
+      });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects invalid audienceType value", async () => {
+    const res = await request
+      .put("/workflows/deploy")
+      .set(AUTH)
+      .send({
+        appId: "kevinlourd-com",
+        workflows: [
+          {
+            name: "bad-audience-flow",
+            audienceType: "lukewarm",
+            dag: DAG_WITH_TRANSACTIONAL_EMAIL_SEND,
+          },
+        ],
+      });
+
+    expect(res.status).toBe(400);
   });
 
   it("rejects invalid category values", async () => {

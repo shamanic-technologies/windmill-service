@@ -108,7 +108,7 @@ router.put("/workflows/deploy", requireApiKey, async (req, res) => {
       return;
     }
 
-    const results: { id: string; name: string; displayName: string | null; category: string | null; action: "created" | "updated" }[] = [];
+    const results: { id: string; name: string; displayName: string | null; category: string | null; channel: string | null; audienceType: string | null; action: "created" | "updated" }[] = [];
 
     for (const wf of body.workflows) {
       const dag = wf.dag as DAG;
@@ -149,13 +149,15 @@ router.put("/workflows/deploy", requireApiKey, async (req, res) => {
             displayName: wf.displayName ?? existing.displayName,
             description: wf.description ?? existing.description,
             category: wf.category ?? existing.category,
+            channel: wf.channel ?? existing.channel,
+            audienceType: wf.audienceType ?? existing.audienceType,
             dag: wf.dag,
             updatedAt: new Date(),
           })
           .where(eq(workflows.id, existing.id))
           .returning();
 
-        results.push({ id: updated.id, name: updated.name, displayName: updated.displayName, category: updated.category, action: "updated" });
+        results.push({ id: updated.id, name: updated.name, displayName: updated.displayName, category: updated.category, channel: updated.channel, audienceType: updated.audienceType, action: "updated" });
       } else {
         // Create new workflow
         if (client) {
@@ -181,13 +183,15 @@ router.put("/workflows/deploy", requireApiKey, async (req, res) => {
             displayName: wf.displayName ?? null,
             description: wf.description,
             category: wf.category ?? null,
+            channel: wf.channel ?? null,
+            audienceType: wf.audienceType ?? null,
             dag: wf.dag,
             windmillFlowPath: flowPath,
             status: "active",
           })
           .returning();
 
-        results.push({ id: created.id, name: created.name, displayName: created.displayName, category: created.category, action: "created" });
+        results.push({ id: created.id, name: created.name, displayName: created.displayName, category: created.category, channel: created.channel, audienceType: created.audienceType, action: "created" });
       }
     }
 
@@ -205,7 +209,7 @@ router.put("/workflows/deploy", requireApiKey, async (req, res) => {
 // GET /workflows — List workflows
 router.get("/workflows", requireApiKey, async (req, res) => {
   try {
-    const { orgId, appId, brandId, campaignId, category, status } = req.query;
+    const { orgId, appId, brandId, campaignId, category, channel, audienceType, status } = req.query;
 
     if (!orgId || typeof orgId !== "string") {
       res.status(400).json({ error: "orgId query parameter is required" });
@@ -227,6 +231,12 @@ router.get("/workflows", requireApiKey, async (req, res) => {
     }
     if (category && typeof category === "string") {
       conditions.push(eq(workflows.category, category));
+    }
+    if (channel && typeof channel === "string") {
+      conditions.push(eq(workflows.channel, channel));
+    }
+    if (audienceType && typeof audienceType === "string") {
+      conditions.push(eq(workflows.audienceType, audienceType));
     }
     if (status && typeof status === "string") {
       conditions.push(eq(workflows.status, status));
