@@ -74,11 +74,18 @@ vi.mock("../../src/lib/windmill-client.js", () => ({
   resetWindmillClient: vi.fn(),
 }));
 
+// Mock runs-service client
+const mockCreateRun = vi.fn().mockResolvedValue({ runId: "run-own-123" });
+
+vi.mock("../../src/lib/runs-client.js", () => ({
+  createRun: (...args: unknown[]) => mockCreateRun(...args),
+}));
+
 import supertest from "supertest";
 import app from "../../src/index.js";
 
 const request = supertest(app);
-const IDENTITY = { "x-org-id": "org-1", "x-user-id": "user-1" };
+const IDENTITY = { "x-org-id": "org-1", "x-user-id": "user-1", "x-run-id": "run-caller-1" };
 const AUTH = { "x-api-key": "test-api-key", ...IDENTITY };
 
 describe("POST /workflows/:id/execute", () => {
@@ -86,6 +93,8 @@ describe("POST /workflows/:id/execute", () => {
     mockWorkflows.length = 0;
     mockRuns.length = 0;
     mockRunFlow.mockClear();
+    mockCreateRun.mockClear();
+    mockCreateRun.mockResolvedValue({ runId: "run-own-123" });
   });
 
   it("executes a workflow and returns a run", async () => {
@@ -106,10 +115,33 @@ describe("POST /workflows/:id/execute", () => {
     expect(res.status).toBe(201);
     expect(res.body.status).toBe("queued");
     expect(res.body.windmillJobId).toBe("job-uuid-123");
+    expect(res.body.runId).toBe("run-own-123");
     expect(mockRunFlow).toHaveBeenCalled();
   });
 
-  it("forwards orgId and userId into Windmill flow inputs", async () => {
+  it("creates a child run in runs-service with caller's runId as parentRunId", async () => {
+    mockWorkflows.push({
+      id: "wf-1",
+      orgId: "org-1",
+      name: "Test Flow",
+      windmillFlowPath: "f/workflows/org_1/test_flow",
+      windmillWorkspace: "prod",
+      dag: VALID_LINEAR_DAG,
+    });
+
+    await request
+      .post("/workflows/wf-1/execute")
+      .set(AUTH)
+      .send({ inputs: {} });
+
+    expect(mockCreateRun).toHaveBeenCalledWith({
+      parentRunId: "run-caller-1",
+      orgId: "org-1",
+      userId: "user-1",
+    });
+  });
+
+  it("forwards orgId, userId, and own runId into Windmill flow inputs", async () => {
     mockWorkflows.push({
       id: "wf-1",
       orgId: "org-1",
@@ -126,11 +158,11 @@ describe("POST /workflows/:id/execute", () => {
 
     expect(mockRunFlow).toHaveBeenCalledWith(
       "f/workflows/org_1/test_flow",
-      expect.objectContaining({ orgId: "org-1", userId: "user-1", email: "user@test.com" }),
+      expect.objectContaining({ orgId: "org-1", userId: "user-1", runId: "run-own-123", email: "user@test.com" }),
     );
   });
 
-  it("stores userId and parentRunId in DB", async () => {
+  it("stores userId in DB", async () => {
     mockWorkflows.push({
       id: "wf-1",
       orgId: "org-1",
@@ -143,11 +175,33 @@ describe("POST /workflows/:id/execute", () => {
     const res = await request
       .post("/workflows/wf-1/execute")
       .set(AUTH)
-      .send({ inputs: {}, parentRunId: "parent-run-123" });
+      .send({ inputs: {} });
 
     expect(res.status).toBe(201);
     expect(res.body.userId).toBe("user-1");
-    expect(res.body.parentRunId).toBe("parent-run-123");
+  });
+
+  it("returns 502 when runs-service fails", async () => {
+    mockCreateRun.mockRejectedValueOnce(
+      new Error("runs-service error: POST /runs/start -> 500 Internal Server Error: boom")
+    );
+
+    mockWorkflows.push({
+      id: "wf-1",
+      orgId: "org-1",
+      name: "Test Flow",
+      windmillFlowPath: "f/workflows/org_1/test_flow",
+      windmillWorkspace: "prod",
+      dag: VALID_LINEAR_DAG,
+    });
+
+    const res = await request
+      .post("/workflows/wf-1/execute")
+      .set(AUTH)
+      .send({ inputs: {} });
+
+    expect(res.status).toBe(502);
+    expect(res.body.error).toContain("runs-service");
   });
 
   it("requires authentication", async () => {
@@ -165,6 +219,8 @@ describe("POST /workflows/by-name/:name/execute", () => {
     mockWorkflows.length = 0;
     mockRuns.length = 0;
     mockRunFlow.mockClear();
+    mockCreateRun.mockClear();
+    mockCreateRun.mockResolvedValue({ runId: "run-own-456" });
   });
 
   it("executes a workflow by orgId + name", async () => {
@@ -185,10 +241,33 @@ describe("POST /workflows/by-name/:name/execute", () => {
     expect(res.status).toBe(201);
     expect(res.body.status).toBe("queued");
     expect(res.body.windmillJobId).toBe("job-uuid-123");
+    expect(res.body.runId).toBe("run-own-456");
     expect(mockRunFlow).toHaveBeenCalled();
   });
 
-  it("forwards orgId and userId into Windmill flow inputs", async () => {
+  it("creates a child run in runs-service with caller's runId as parentRunId", async () => {
+    mockWorkflows.push({
+      id: "wf-1",
+      orgId: "org-1",
+      name: "create-user-flow",
+      windmillFlowPath: "f/workflows/org_1/create_user_flow",
+      windmillWorkspace: "prod",
+      dag: VALID_LINEAR_DAG,
+    });
+
+    await request
+      .post("/workflows/by-name/create-user-flow/execute")
+      .set(AUTH)
+      .send({ orgId: "org-1", inputs: {} });
+
+    expect(mockCreateRun).toHaveBeenCalledWith({
+      parentRunId: "run-caller-1",
+      orgId: "org-1",
+      userId: "user-1",
+    });
+  });
+
+  it("forwards orgId, userId, and own runId into Windmill flow inputs", async () => {
     mockWorkflows.push({
       id: "wf-1",
       orgId: "org-1",
@@ -205,11 +284,11 @@ describe("POST /workflows/by-name/:name/execute", () => {
 
     expect(mockRunFlow).toHaveBeenCalledWith(
       "f/workflows/org_1/create_user_flow",
-      expect.objectContaining({ orgId: "org-1", userId: "user-1", email: "user@test.com" }),
+      expect.objectContaining({ orgId: "org-1", userId: "user-1", runId: "run-own-456", email: "user@test.com" }),
     );
   });
 
-  it("stores userId and parentRunId in DB", async () => {
+  it("stores userId in DB", async () => {
     mockWorkflows.push({
       id: "wf-1",
       orgId: "org-1",
@@ -222,11 +301,10 @@ describe("POST /workflows/by-name/:name/execute", () => {
     const res = await request
       .post("/workflows/by-name/simple-flow/execute")
       .set(AUTH)
-      .send({ orgId: "org-1", parentRunId: "parent-123" });
+      .send({ orgId: "org-1" });
 
     expect(res.status).toBe(201);
     expect(res.body.userId).toBe("user-1");
-    expect(res.body.parentRunId).toBe("parent-123");
   });
 
   it("returns 404 for unknown workflow name", async () => {

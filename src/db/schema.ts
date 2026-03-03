@@ -55,7 +55,7 @@ export const workflowRuns = pgTable(
     campaignId: text("campaign_id"),
     subrequestId: text("subrequest_id"),
     runId: text("run_id"),
-    parentRunId: text("parent_run_id"),
+
     windmillJobId: text("windmill_job_id"),
     windmillWorkspace: text("windmill_workspace").notNull().default("prod"),
     status: text("status").notNull().default("queued"),

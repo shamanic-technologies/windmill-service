@@ -451,12 +451,7 @@
           "runId": {
             "type": "string",
             "nullable": true,
-            "description": "External run ID (if provided at execution time)."
-          },
-          "parentRunId": {
-            "type": "string",
-            "nullable": true,
-            "description": "Parent run ID (if linked to a parent execution)."
+            "description": "Runs-service run ID for this execution (auto-created)."
           },
           "windmillJobId": {
             "type": "string",
@@ -503,7 +498,6 @@
           "subrequestId",
           "userId",
           "runId",
-          "parentRunId",
           "windmillJobId",
           "windmillWorkspace",
           "status",
@@ -522,14 +516,6 @@
               "nullable": true
             },
             "description": "Runtime inputs for the workflow. Accessible in nodes via $ref:flow_input.fieldName."
-          },
-          "runId": {
-            "type": "string",
-            "description": "Optional external run ID for cost tracking via runs-service."
-          },
-          "parentRunId": {
-            "type": "string",
-            "description": "Optional parent run ID to link this execution to a parent run."
           }
         }
       },
@@ -936,14 +922,6 @@
               "nullable": true
             },
             "description": "Runtime inputs for the workflow. Accessible in nodes via $ref:flow_input.fieldName."
-          },
-          "runId": {
-            "type": "string",
-            "description": "Optional external run ID for cost tracking via runs-service."
-          },
-          "parentRunId": {
-            "type": "string",
-            "description": "Optional parent run ID to link this execution to a parent run."
           }
         },
         "required": [

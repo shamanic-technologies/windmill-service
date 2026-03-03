@@ -170,8 +170,6 @@ export const ExecuteWorkflowSchema = z
     inputs: z.record(z.unknown()).optional().describe(
       "Runtime inputs for the workflow. Accessible in nodes via $ref:flow_input.fieldName."
     ),
-    runId: z.string().optional().describe("Optional external run ID for cost tracking via runs-service."),
-    parentRunId: z.string().optional().describe("Optional parent run ID to link this execution to a parent run."),
   })
   .openapi("ExecuteWorkflowRequest");
 
@@ -183,8 +181,7 @@ export const WorkflowRunResponseSchema = z
     campaignId: z.string().nullable(),
     subrequestId: z.string().nullable(),
     userId: z.string().nullable().describe("User ID from the execution context."),
-    runId: z.string().nullable().describe("External run ID (if provided at execution time)."),
-    parentRunId: z.string().nullable().describe("Parent run ID (if linked to a parent execution)."),
+    runId: z.string().nullable().describe("Runs-service run ID for this execution (auto-created)."),
     windmillJobId: z.string().nullable().describe("Internal Windmill job ID (managed automatically)."),
     windmillWorkspace: z.string(),
     status: z.string().describe("Run status: queued, running, completed, failed, or cancelled."),
@@ -246,8 +243,6 @@ export const ExecuteByNameSchema = z
     inputs: z.record(z.unknown()).optional().describe(
       "Runtime inputs for the workflow. Accessible in nodes via $ref:flow_input.fieldName."
     ),
-    runId: z.string().optional().describe("Optional external run ID for cost tracking via runs-service."),
-    parentRunId: z.string().optional().describe("Optional parent run ID to link this execution to a parent run."),
   })
   .openapi("ExecuteByNameRequest");
 

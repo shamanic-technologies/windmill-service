@@ -5,6 +5,7 @@ import { workflows, workflowRuns } from "../db/schema.js";
 import { requireApiKey } from "../middleware/auth.js";
 import { getWindmillClient } from "../lib/windmill-client.js";
 import { collectServiceEnvs } from "../lib/service-envs.js";
+import { createRun } from "../lib/runs-client.js";
 import { ExecuteWorkflowSchema, ExecuteByNameSchema } from "../schemas.js";
 
 const router = Router();
@@ -51,13 +52,30 @@ router.post(
         return;
       }
 
-      // Run in Windmill — inject orgId and userId so nodes can access them via flow_input
       const userId = res.locals.userId as string;
+      const callerRunId = res.locals.runId as string;
+
+      // Create a child run in runs-service (links to caller's run via parentRunId)
+      let ownRunId: string | null = null;
+      try {
+        const { runId: newRunId } = await createRun({
+          parentRunId: callerRunId,
+          orgId: body.orgId,
+          userId,
+        });
+        ownRunId = newRunId;
+      } catch (err) {
+        console.error("[workflow-runs] Failed to create run in runs-service:", err);
+        res.status(502).json({ error: "Failed to create run in runs-service" });
+        return;
+      }
+
+      // Run in Windmill — inject orgId, userId, and our own runId so nodes can access them
       let windmillJobId: string | null = null;
       const client = getWindmillClient();
       if (client) {
         try {
-          const flowInputs = { ...body.inputs, orgId: body.orgId, userId, serviceEnvs: collectServiceEnvs() };
+          const flowInputs = { ...body.inputs, orgId: body.orgId, userId, runId: ownRunId, serviceEnvs: collectServiceEnvs() };
           windmillJobId = await client.runFlow(
             workflow.windmillFlowPath,
             flowInputs
@@ -81,10 +99,9 @@ router.post(
           workflowId: workflow.id,
           orgId: body.orgId,
           userId,
-          parentRunId: body.parentRunId,
           campaignId: workflow.campaignId,
           subrequestId: workflow.subrequestId,
-          runId: body.runId,
+          runId: ownRunId,
           windmillJobId,
           windmillWorkspace: workflow.windmillWorkspace,
           status: "queued",
@@ -126,13 +143,30 @@ router.post("/workflows/:id/execute", requireApiKey, async (req, res) => {
       return;
     }
 
-    // Run in Windmill — inject orgId and userId so nodes can access them via flow_input
     const executeUserId = res.locals.userId as string;
+    const callerRunId = res.locals.runId as string;
+
+    // Create a child run in runs-service (links to caller's run via parentRunId)
+    let ownRunId: string | null = null;
+    try {
+      const { runId: newRunId } = await createRun({
+        parentRunId: callerRunId,
+        orgId: workflow.orgId,
+        userId: executeUserId,
+      });
+      ownRunId = newRunId;
+    } catch (err) {
+      console.error("[workflow-runs] Failed to create run in runs-service:", err);
+      res.status(502).json({ error: "Failed to create run in runs-service" });
+      return;
+    }
+
+    // Run in Windmill — inject orgId, userId, and our own runId so nodes can access them
     let windmillJobId: string | null = null;
     const client = getWindmillClient();
     if (client) {
       try {
-        const flowInputs = { ...body.inputs, orgId: workflow.orgId, userId: executeUserId, serviceEnvs: collectServiceEnvs() };
+        const flowInputs = { ...body.inputs, orgId: workflow.orgId, userId: executeUserId, runId: ownRunId, serviceEnvs: collectServiceEnvs() };
         windmillJobId = await client.runFlow(
           workflow.windmillFlowPath,
           flowInputs
@@ -153,10 +187,9 @@ router.post("/workflows/:id/execute", requireApiKey, async (req, res) => {
         workflowId: workflow.id,
         orgId: workflow.orgId,
         userId: executeUserId,
-        parentRunId: body.parentRunId,
         campaignId: workflow.campaignId,
         subrequestId: workflow.subrequestId,
-        runId: body.runId,
+        runId: ownRunId,
         windmillJobId,
         windmillWorkspace: workflow.windmillWorkspace,
         status: "queued",

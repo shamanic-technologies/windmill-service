@@ -75,7 +75,7 @@ import supertest from "supertest";
 import app from "../../src/index.js";
 
 const request = supertest(app);
-const IDENTITY = { "x-org-id": "org-1", "x-user-id": "user-1" };
+const IDENTITY = { "x-org-id": "org-1", "x-user-id": "user-1", "x-run-id": "run-caller-1" };
 const AUTH = { "x-api-key": "test-api-key", ...IDENTITY };
 
 describe("POST /workflows", () => {
