@@ -31,8 +31,8 @@ describe("Polarity workflows", () => {
       expect(wf.dag.edges).toHaveLength(0);
     });
 
-    it("uses polaritycourse appId", () => {
-      expect(wf.dag.nodes[0].config?.appId).toBe("polaritycourse");
+    it("uses polaritycourse orgId", () => {
+      expect(wf.dag.nodes[0].config?.orgId).toBe("polaritycourse");
     });
 
     it("maps email from flow_input", () => {

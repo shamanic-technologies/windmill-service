@@ -76,7 +76,7 @@ vi.mock("../../src/lib/workflow-generator.js", () => {
 });
 
 // Mock fetchAnthropicKey from key-service-client
-const mockFetchAnthropicKey = vi.fn().mockResolvedValue("resolved-anthropic-key");
+const mockFetchAnthropicKey = vi.fn().mockResolvedValue({ key: "resolved-anthropic-key", keySource: "platform" });
 vi.mock("../../src/lib/key-service-client.js", () => ({
   fetchProviderRequirements: vi.fn().mockResolvedValue({ requirements: [], providers: [] }),
   fetchAnthropicKey: (...args: unknown[]) => mockFetchAnthropicKey(...args),
@@ -86,14 +86,15 @@ import supertest from "supertest";
 import app from "../../src/index.js";
 
 const request = supertest(app);
-const AUTH = { "x-api-key": "test-api-key" };
+const IDENTITY = { "x-org-id": "org-1", "x-user-id": "user-1" };
+const AUTH = { "x-api-key": "test-api-key", ...IDENTITY };
 
 describe("POST /workflows/generate", () => {
   beforeEach(() => {
     mockDbRows.length = 0;
     mockGenerateWorkflow.mockReset();
     mockFetchAnthropicKey.mockReset();
-    mockFetchAnthropicKey.mockResolvedValue("resolved-anthropic-key");
+    mockFetchAnthropicKey.mockResolvedValue({ key: "resolved-anthropic-key", keySource: "platform" });
   });
 
   it("generates and deploys a workflow from description", async () => {
@@ -109,9 +110,7 @@ describe("POST /workflows/generate", () => {
       .post("/workflows/generate")
       .set(AUTH)
       .send({
-        appId: "test-app",
         orgId: "org-1",
-        keySource: "app",
         description: "I want a cold email outreach workflow that finds leads and sends emails",
       });
 
@@ -125,7 +124,7 @@ describe("POST /workflows/generate", () => {
     expect(res.body.category).toBe("sales");
     expect(res.body.channel).toBe("email");
     expect(res.body.audienceType).toBe("cold-outreach");
-    expect(mockFetchAnthropicKey).toHaveBeenCalledWith("app", { appId: "test-app", orgId: "org-1" });
+    expect(mockFetchAnthropicKey).toHaveBeenCalledWith({ orgId: "org-1", userId: "user-1" });
     expect(mockGenerateWorkflow).toHaveBeenCalledWith(
       { description: "I want a cold email outreach workflow that finds leads and sends emails", hints: undefined, style: undefined },
       "resolved-anthropic-key",
@@ -144,9 +143,7 @@ describe("POST /workflows/generate", () => {
       .post("/workflows/generate")
       .set(AUTH)
       .send({
-        appId: "test-app",
         orgId: "org-1",
-        keySource: "app",
         description: "A workflow that does something impossible with bad types",
       });
 
@@ -156,11 +153,13 @@ describe("POST /workflows/generate", () => {
   });
 
   it("requires authentication", async () => {
-    const res = await request.post("/workflows/generate").send({
-      appId: "test-app",
-      orgId: "org-1",
-      description: "test workflow description here",
-    });
+    const res = await request
+      .post("/workflows/generate")
+      .set(IDENTITY)
+      .send({
+        orgId: "org-1",
+        description: "test workflow description here",
+      });
 
     expect(res.status).toBe(401);
   });
@@ -169,7 +168,7 @@ describe("POST /workflows/generate", () => {
     const res = await request
       .post("/workflows/generate")
       .set(AUTH)
-      .send({ appId: "test-app", orgId: "org-1", keySource: "app" });
+      .send({ orgId: "org-1" });
 
     expect(res.status).toBe(400);
   });
@@ -178,50 +177,9 @@ describe("POST /workflows/generate", () => {
     const res = await request
       .post("/workflows/generate")
       .set(AUTH)
-      .send({ appId: "test-app", orgId: "org-1", keySource: "app", description: "hi" });
+      .send({ orgId: "org-1", description: "hi" });
 
     expect(res.status).toBe(400);
-  });
-
-  it("validates keySource is required", async () => {
-    const res = await request
-      .post("/workflows/generate")
-      .set(AUTH)
-      .send({ appId: "test-app", orgId: "org-1", description: "A workflow that does things" });
-
-    expect(res.status).toBe(400);
-  });
-
-  it("validates keySource enum values", async () => {
-    const res = await request
-      .post("/workflows/generate")
-      .set(AUTH)
-      .send({ appId: "test-app", orgId: "org-1", keySource: "invalid", description: "A workflow that does things" });
-
-    expect(res.status).toBe(400);
-  });
-
-  it("accepts keySource 'platform' and resolves via app-keys", async () => {
-    mockGenerateWorkflow.mockResolvedValueOnce({
-      dag: VALID_LINEAR_DAG,
-      category: "sales",
-      channel: "email",
-      audienceType: "cold-outreach",
-      description: "Test",
-    });
-
-    const res = await request
-      .post("/workflows/generate")
-      .set(AUTH)
-      .send({
-        appId: "test-app",
-        orgId: "org-1",
-        keySource: "platform",
-        description: "A workflow that does things with platform key",
-      });
-
-    expect(res.status).toBe(200);
-    expect(mockFetchAnthropicKey).toHaveBeenCalledWith("platform", { appId: "test-app", orgId: "org-1" });
   });
 
   it("passes hints through to generator", async () => {
@@ -237,14 +195,12 @@ describe("POST /workflows/generate", () => {
       .post("/workflows/generate")
       .set(AUTH)
       .send({
-        appId: "test-app",
         orgId: "org-1",
-        keySource: "byok",
         description: "Cold email outreach with lead search",
         hints: { services: ["lead", "email-gateway"] },
       });
 
-    expect(mockFetchAnthropicKey).toHaveBeenCalledWith("byok", { appId: "test-app", orgId: "org-1" });
+    expect(mockFetchAnthropicKey).toHaveBeenCalledWith({ orgId: "org-1", userId: "user-1" });
     expect(mockGenerateWorkflow).toHaveBeenCalledWith(
       { description: "Cold email outreach with lead search", hints: { services: ["lead", "email-gateway"] }, style: undefined },
       "resolved-anthropic-key",
@@ -260,9 +216,7 @@ describe("POST /workflows/generate", () => {
       .post("/workflows/generate")
       .set(AUTH)
       .send({
-        appId: "test-app",
         orgId: "org-1",
-        keySource: "app",
         description: "Some workflow description for testing errors",
       });
 
@@ -272,16 +226,14 @@ describe("POST /workflows/generate", () => {
 
   it("returns 502 when key-service returns an error", async () => {
     mockFetchAnthropicKey.mockRejectedValueOnce(
-      new Error("key-service error: GET /internal/app-keys/anthropic/decrypt -> 404 Not Found: key not configured"),
+      new Error("key-service error: GET /keys/anthropic/decrypt -> 404 Not Found: key not configured"),
     );
 
     const res = await request
       .post("/workflows/generate")
       .set(AUTH)
       .send({
-        appId: "test-app",
         orgId: "org-1",
-        keySource: "app",
         description: "Some workflow description for testing key-service errors",
       });
 
@@ -304,9 +256,7 @@ describe("POST /workflows/generate", () => {
       .post("/workflows/generate")
       .set(AUTH)
       .send({
-        appId: "test-app",
         orgId: "org-1",
-        keySource: "app",
         description: "Cold email outreach in the style of Alex Hormozi",
         style: { type: "human", humanId: "human-123", name: "Hormozi" },
       });
@@ -337,9 +287,7 @@ describe("POST /workflows/generate", () => {
       .post("/workflows/generate")
       .set(AUTH)
       .send({
-        appId: "test-app",
         orgId: "org-1",
-        keySource: "app",
         description: "Cold email outreach in my brand style with good copy",
         style: { type: "brand", brandId: "brand-456", name: "My Brand" },
       });
@@ -354,9 +302,7 @@ describe("POST /workflows/generate", () => {
       .post("/workflows/generate")
       .set(AUTH)
       .send({
-        appId: "test-app",
         orgId: "org-1",
-        keySource: "app",
         description: "Cold email outreach in expert style",
         style: { type: "human", name: "Hormozi" },
       });
@@ -369,9 +315,7 @@ describe("POST /workflows/generate", () => {
       .post("/workflows/generate")
       .set(AUTH)
       .send({
-        appId: "test-app",
         orgId: "org-1",
-        keySource: "app",
         description: "Cold email outreach in brand style long description",
         style: { type: "brand", name: "My Brand" },
       });
@@ -392,9 +336,7 @@ describe("POST /workflows/generate", () => {
       .post("/workflows/generate")
       .set(AUTH)
       .send({
-        appId: "test-app",
         orgId: "org-1",
-        keySource: "app",
         description: "Standard cold email outreach without any style preference",
       });
 
@@ -414,9 +356,7 @@ describe("POST /workflows/generate", () => {
       .post("/workflows/generate")
       .set(AUTH)
       .send({
-        appId: "test-app",
         orgId: "org-1",
-        keySource: "app",
         description: "Some workflow description for testing missing config",
       });
 

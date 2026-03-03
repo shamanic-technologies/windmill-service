@@ -108,12 +108,11 @@ export const WorkflowAudienceTypeSchema = z
 
 export const CreateWorkflowSchema = z
   .object({
-    appId: z.string().min(1).describe("Application identifier. Workflows are scoped to appId."),
     orgId: z.string().min(1).describe("Organization ID that owns this workflow."),
     brandId: z.string().optional().describe("Optional brand ID for scoping."),
     campaignId: z.string().optional().describe("Optional campaign ID for scoping."),
     subrequestId: z.string().optional().describe("Optional subrequest ID for cost tracking."),
-    name: z.string().min(1).describe("Workflow name. Must be unique within the appId. Used to execute by name later."),
+    name: z.string().min(1).describe("Workflow name. Must be unique within the orgId. Used to execute by name later."),
     description: z.string().optional().describe("Human-readable description of what this workflow does."),
     category: WorkflowCategorySchema.describe("Workflow category."),
     channel: WorkflowChannelSchema.describe("Workflow distribution channel."),
@@ -132,15 +131,14 @@ export const UpdateWorkflowSchema = z
 
 export const WorkflowResponseSchema = z
   .object({
-    id: z.string().uuid().describe("Workflow UUID. Not needed for execution — use name + appId instead."),
-    appId: z.string().describe("Application identifier."),
+    id: z.string().uuid().describe("Workflow UUID."),
     orgId: z.string().describe("Organization ID."),
     brandId: z.string().nullable(),
     humanId: z.string().nullable().describe("Human ID if this workflow was generated in a human expert's style."),
     campaignId: z.string().nullable(),
     subrequestId: z.string().nullable(),
     styleName: z.string().nullable().describe("Base style name used for versioned naming (e.g. 'hormozi'). Null for non-styled workflows."),
-    name: z.string().describe("Workflow name. Use this with appId to execute via /workflows/by-name/{name}/execute."),
+    name: z.string().describe("Workflow name. Use this with orgId to execute via /workflows/by-name/{name}/execute."),
     displayName: z.string().nullable().describe("Human-readable display name. Falls back to name if not set."),
     description: z.string().nullable(),
     category: WorkflowCategorySchema.describe("Workflow category."),
@@ -169,13 +167,11 @@ export const ValidationResultSchema = z
 
 export const ExecuteWorkflowSchema = z
   .object({
-    appId: z.string().optional().describe(
-      "App ID override. If not provided, falls back to the workflow's stored appId."
-    ),
     inputs: z.record(z.unknown()).optional().describe(
       "Runtime inputs for the workflow. Accessible in nodes via $ref:flow_input.fieldName."
     ),
     runId: z.string().optional().describe("Optional external run ID for cost tracking via runs-service."),
+    parentRunId: z.string().optional().describe("Optional parent run ID to link this execution to a parent run."),
   })
   .openapi("ExecuteWorkflowRequest");
 
@@ -186,7 +182,9 @@ export const WorkflowRunResponseSchema = z
     orgId: z.string(),
     campaignId: z.string().nullable(),
     subrequestId: z.string().nullable(),
+    userId: z.string().nullable().describe("User ID from the execution context."),
     runId: z.string().nullable().describe("External run ID (if provided at execution time)."),
+    parentRunId: z.string().nullable().describe("Parent run ID (if linked to a parent execution)."),
     windmillJobId: z.string().nullable().describe("Internal Windmill job ID (managed automatically)."),
     windmillWorkspace: z.string(),
     status: z.string().describe("Run status: queued, running, completed, failed, or cancelled."),
@@ -213,12 +211,9 @@ export const DeployWorkflowItemSchema = z
 
 export const DeployWorkflowsSchema = z
   .object({
-    appId: z.string().min(1).describe(
-      "Your application identifier. Workflows are scoped to (appId + signature). " +
-      "Use the same appId when executing. This is idempotent — deploying the same DAG updates the existing workflow."
-    ),
-    orgId: z.string().min(1).optional().describe(
-      "Organization ID that owns these workflows. If omitted, falls back to appId for backward compatibility."
+    orgId: z.string().min(1).describe(
+      "Organization ID that owns these workflows. Workflows are scoped to (orgId + signature). " +
+      "This is idempotent — deploying the same DAG updates the existing workflow."
     ),
     workflows: z.array(DeployWorkflowItemSchema).min(1).describe("The workflows to deploy."),
   })
@@ -247,12 +242,12 @@ export const DeployWorkflowsResponseSchema = z
 
 export const ExecuteByNameSchema = z
   .object({
-    appId: z.string().min(1).describe("Must match the appId used during deploy."),
-    orgId: z.string().optional().describe("Organization ID for this execution (overrides workflow's orgId if set)."),
+    orgId: z.string().min(1).describe("Organization ID. Must match the orgId used during deploy."),
     inputs: z.record(z.unknown()).optional().describe(
       "Runtime inputs for the workflow. Accessible in nodes via $ref:flow_input.fieldName."
     ),
     runId: z.string().optional().describe("Optional external run ID for cost tracking via runs-service."),
+    parentRunId: z.string().optional().describe("Optional parent run ID to link this execution to a parent run."),
   })
   .openapi("ExecuteByNameRequest");
 
@@ -305,23 +300,9 @@ export const GenerateWorkflowHintsSchema = z
   })
   .openapi("GenerateWorkflowHints");
 
-export const KeySourceSchema = z
-  .enum(["app", "byok", "platform"])
-  .describe(
-    "Where to resolve the Anthropic API key. " +
-    '"app" fetches the per-app key via /internal/app-keys/anthropic/decrypt. ' +
-    '"platform" fetches the global platform key via /internal/platform-keys/anthropic/decrypt. ' +
-    '"byok" fetches the user\'s own key via /internal/keys/anthropic/decrypt.'
-  )
-  .openapi("KeySource");
-
 export const GenerateWorkflowSchema = z
   .object({
-    appId: z.string().min(1).describe("Application identifier. The generated workflow will be deployed under this appId."),
-    orgId: z.string().min(1).describe("Organization ID."),
-    keySource: KeySourceSchema.describe(
-      'Required. Where to resolve the Anthropic API key: "app", "platform", or "byok".'
-    ),
+    orgId: z.string().min(1).describe("Organization ID. The generated workflow will be deployed under this orgId."),
     description: z.string().min(10).describe(
       "Natural language description of the desired workflow. Be specific about the steps, services, and data flow."
     ),
@@ -361,7 +342,7 @@ export const BestWorkflowObjectiveSchema = z
 
 export const BestWorkflowQuerySchema = z
   .object({
-    appId: z.string().min(1).optional().describe("Application identifier. When omitted, searches across all apps."),
+    orgId: z.string().optional().describe("Organization ID. When omitted, searches across all orgs."),
     category: WorkflowCategorySchema.optional().describe("Filter workflows by category."),
     channel: WorkflowChannelSchema.optional().describe("Filter workflows by channel."),
     audienceType: WorkflowAudienceTypeSchema.optional().describe("Filter workflows by audience type."),
@@ -484,7 +465,6 @@ registry.registerPath({
   request: {
     query: z.object({
       orgId: z.string().optional(),
-      appId: z.string().optional(),
       brandId: z.string().optional(),
       humanId: z.string().optional(),
       campaignId: z.string().optional(),
@@ -755,7 +735,7 @@ registry.registerPath({
   path: "/workflows/deploy",
   summary: "Deploy (upsert) workflows by DAG signature",
   description:
-    "Idempotent: creates new workflows or updates existing ones matched by (appId + DAG signature). " +
+    "Idempotent: creates new workflows or updates existing ones matched by (orgId + DAG signature). " +
     "The workflow name is auto-generated as {category}-{channel}-{audienceType}-{signatureName}. " +
     "signatureName is a human-readable word auto-assigned to each unique DAG. " +
     "After deploying, execute workflows via POST /workflows/by-name/{name}/execute.",

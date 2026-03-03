@@ -5,6 +5,7 @@ import { db } from "./db/index.js";
 import { workflowRuns } from "./db/schema.js";
 import { getWindmillClient } from "./lib/windmill-client.js";
 import { JobPoller } from "./lib/job-poller.js";
+import { requireIdentity } from "./middleware/auth.js";
 import healthRoutes from "./routes/health.js";
 import workflowsRoutes from "./routes/workflows.js";
 import workflowRunsRoutes from "./routes/workflow-runs.js";
@@ -16,11 +17,14 @@ const PORT = process.env.PORT ?? 3000;
 app.use(cors());
 app.use(express.json());
 
-// Routes
+// Public routes (no identity required)
 app.use(healthRoutes);
+app.use(openapiRoutes);
+
+// Identity-gated routes
+app.use(requireIdentity);
 app.use(workflowsRoutes);
 app.use(workflowRunsRoutes);
-app.use(openapiRoutes);
 
 // 404 fallback
 app.use((_req, res) => {

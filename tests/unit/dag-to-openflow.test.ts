@@ -126,7 +126,7 @@ describe("dagToOpenFlow", () => {
         string,
         { type: string; value?: unknown; expr?: string }
       >;
-      expect(transforms.appId).toEqual({
+      expect(transforms.orgId).toEqual({
         type: "static",
         value: "polaritycourse",
       });
@@ -182,8 +182,8 @@ describe("dagToOpenFlow", () => {
     }
   });
 
-  it("auto-injects appId and serviceEnvs input_transforms into script modules", () => {
-    const result = dagToOpenFlow(VALID_LINEAR_DAG, "AppId Inject");
+  it("auto-injects orgId, userId, and serviceEnvs input_transforms into script modules", () => {
+    const result = dagToOpenFlow(VALID_LINEAR_DAG, "OrgId UserId Inject");
 
     for (const mod of result.value.modules) {
       if (mod.value.type === "script") {
@@ -191,9 +191,13 @@ describe("dagToOpenFlow", () => {
           string,
           { type: string; expr?: string; value?: unknown }
         >;
-        expect(transforms.appId).toEqual({
+        expect(transforms.orgId).toEqual({
           type: "javascript",
-          expr: "flow_input.appId",
+          expr: "flow_input.orgId",
+        });
+        expect(transforms.userId).toEqual({
+          type: "javascript",
+          expr: "flow_input.userId",
         });
         expect(transforms.serviceEnvs).toEqual({
           type: "javascript",
@@ -203,8 +207,8 @@ describe("dagToOpenFlow", () => {
     }
   });
 
-  it("does not override explicit appId in node config", () => {
-    const result = dagToOpenFlow(POLARITY_WELCOME_DAG, "Explicit AppId");
+  it("does not override explicit orgId in node config but auto-injects userId", () => {
+    const result = dagToOpenFlow(POLARITY_WELCOME_DAG, "Explicit OrgId");
 
     const mod = result.value.modules[0];
     expect(mod.value.type).toBe("script");
@@ -215,19 +219,25 @@ describe("dagToOpenFlow", () => {
         { type: string; expr?: string; value?: unknown }
       >;
       // Should keep the static config value, not override with flow_input
-      expect(transforms.appId).toEqual({
+      expect(transforms.orgId).toEqual({
         type: "static",
         value: "polaritycourse",
+      });
+      // Should still auto-inject userId
+      expect(transforms.userId).toEqual({
+        type: "javascript",
+        expr: "flow_input.userId",
       });
     }
   });
 
-  it("declares appId and serviceEnvs in OpenFlow schema properties", () => {
+  it("declares orgId, userId, and serviceEnvs in OpenFlow schema properties", () => {
     const result = dagToOpenFlow(VALID_LINEAR_DAG, "Schema Test");
 
     expect(result.schema).toBeDefined();
     const props = (result.schema as Record<string, unknown>).properties as Record<string, unknown>;
-    expect(props.appId).toEqual({ type: "string", description: "Application identifier" });
+    expect(props.orgId).toEqual({ type: "string", description: "Organization identifier" });
+    expect(props.userId).toEqual({ type: "string", description: "User identifier" });
     expect(props.serviceEnvs).toEqual({ type: "object", description: "Service URLs and API keys injected by workflow-service" });
   });
 
@@ -296,10 +306,14 @@ describe("dagToOpenFlow", () => {
         type: "javascript",
         expr: "error.message",
       });
-      // Should auto-inject appId and serviceEnvs
-      expect(transforms.appId).toEqual({
+      // Should auto-inject orgId, userId and serviceEnvs
+      expect(transforms.orgId).toEqual({
         type: "javascript",
-        expr: "flow_input.appId",
+        expr: "flow_input.orgId",
+      });
+      expect(transforms.userId).toEqual({
+        type: "javascript",
+        expr: "flow_input.userId",
       });
       expect(transforms.serviceEnvs).toEqual({
         type: "javascript",
@@ -317,9 +331,9 @@ describe("dagToOpenFlow", () => {
     const result = dagToOpenFlow(DAG_WITH_FLOW_INPUT_REFS, "Flow Input Schema");
 
     const props = (result.schema as Record<string, unknown>).properties as Record<string, unknown>;
-    expect(props.appId).toEqual({ type: "string", description: "Application identifier" });
+    expect(props.orgId).toEqual({ type: "string", description: "Organization identifier" });
+    expect(props.userId).toEqual({ type: "string", description: "User identifier" });
     expect(props.campaignId).toEqual({ type: "string" });
-    expect(props.orgId).toEqual({ type: "string" });
   });
 
   it("declares flow_input fields from all nodes including onError handler", () => {
@@ -544,7 +558,7 @@ describe("dagToOpenFlow", () => {
       expect(expr).toContain('"broadcast"');
       // Dynamic fields should be present (deep paths use optional chaining)
       expect(expr).toContain("results.start_run?.lead?.data?.email");
-      expect(expr).toContain("results.start_run?.appId");
+      expect(expr).toContain("results.start_run?.orgId");
       // Nested metadata should merge static source with dynamic emailGenerationId
       expect(expr).toContain('"source"');
       expect(expr).toContain("results.email_generate?.id");

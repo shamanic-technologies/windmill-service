@@ -115,7 +115,7 @@ const UNIQUE_WORDS = [...new Set(WORDS)];
  * words are exhausted.
  *
  * @param signature - The SHA-256 hex hash of the DAG
- * @param usedNames - Set of signatureNames already taken in this (appId) scope
+ * @param usedNames - Set of signatureNames already taken in this (orgId) scope
  * @returns A unique signatureName
  */
 export function pickSignatureName(

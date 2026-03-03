@@ -92,10 +92,11 @@ import supertest from "supertest";
 import app from "../../src/index.js";
 
 const request = supertest(app);
-const AUTH = { "x-api-key": "test-api-key" };
+const IDENTITY = { "x-org-id": "org-1", "x-user-id": "user-1" };
+const AUTH = { "x-api-key": "test-api-key", ...IDENTITY };
 
 const BASE_QUERY = {
-  appId: "app1",
+  orgId: "org1",
   category: "sales",
   channel: "email",
   audienceType: "cold-outreach",
@@ -105,7 +106,6 @@ const BASE_QUERY = {
 function makeWorkflow(overrides: Record<string, unknown> = {}) {
   return {
     id: "wf-" + Math.random().toString(36).slice(2, 10),
-    appId: "app1",
     orgId: "org1",
     name: "sales-email-cold-outreach-alpha",
     displayName: null,
@@ -297,6 +297,7 @@ describe("GET /workflows/best", () => {
   it("requires authentication", async () => {
     const res = await request
       .get("/workflows/best")
+      .set(IDENTITY)
       .query(BASE_QUERY);
 
     expect(res.status).toBe(401);

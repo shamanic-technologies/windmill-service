@@ -12,7 +12,6 @@ export async function main(
   brandId?: string,
   campaignId?: string,
   runId?: string,
-  appId?: string,
   serviceEnvs?: Record<string, string>,
 ) {
   const baseUrl = serviceEnvs?.STRIPE_SERVICE_URL ?? Bun.env.STRIPE_SERVICE_URL;
@@ -30,7 +29,7 @@ export async function main(
       },
       body: JSON.stringify({
         lineItems, successUrl, cancelUrl, mode, customerId, customerEmail,
-        metadata, discounts, orgId, brandId, campaignId, runId, appId,
+        metadata, discounts, orgId, brandId, campaignId, runId,
       }),
     }
   );

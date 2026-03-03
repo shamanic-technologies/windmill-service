@@ -15,7 +15,7 @@ export const postRegistrationWelcome: DAG = {
       id: "send-welcome",
       type: "transactional-email.send",
       config: {
-        appId: "polaritycourse",
+        orgId: "polaritycourse",
         eventType: "webinar-registration-welcome",
       },
       inputMapping: {

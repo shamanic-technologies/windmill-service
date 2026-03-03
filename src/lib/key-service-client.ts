@@ -5,6 +5,11 @@ export interface ProviderRequirementsResponse {
   providers: string[];
 }
 
+export interface KeyDecryptResponse {
+  key: string;
+  keySource: "platform" | "org";
+}
+
 function getKeyServiceConfig(): { baseUrl: string; apiKey: string } {
   const baseUrl = process.env.KEY_SERVICE_URL;
   const apiKey = process.env.KEY_SERVICE_API_KEY;
@@ -44,9 +49,8 @@ export async function fetchProviderRequirements(
 }
 
 export async function fetchAnthropicKey(
-  keySource: "app" | "byok" | "platform",
-  opts: { appId: string; orgId: string },
-): Promise<string> {
+  opts: { orgId: string; userId: string },
+): Promise<KeyDecryptResponse> {
   const { baseUrl, apiKey } = getKeyServiceConfig();
 
   const callerHeaders = {
@@ -55,12 +59,11 @@ export async function fetchAnthropicKey(
     "x-caller-path": "/workflows/generate",
   };
 
-  const path =
-    keySource === "platform"
-      ? `/internal/platform-keys/anthropic/decrypt`
-      : keySource === "app"
-        ? `/internal/app-keys/anthropic/decrypt?appId=${encodeURIComponent(opts.appId)}`
-        : `/internal/keys/anthropic/decrypt?orgId=${encodeURIComponent(opts.orgId)}`;
+  const params = new URLSearchParams({
+    orgId: opts.orgId,
+    userId: opts.userId,
+  });
+  const path = `/keys/anthropic/decrypt?${params}`;
 
   const res = await fetch(`${baseUrl}${path}`, {
     method: "GET",
@@ -73,10 +76,10 @@ export async function fetchAnthropicKey(
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(
-      `key-service error: GET ${path.split("?")[0]} -> ${res.status} ${res.statusText}: ${text}`
+      `key-service error: GET /keys/anthropic/decrypt -> ${res.status} ${res.statusText}: ${text}`
     );
   }
 
-  const body = (await res.json()) as { provider: string; key: string };
-  return body.key;
+  const body = (await res.json()) as KeyDecryptResponse;
+  return body;
 }

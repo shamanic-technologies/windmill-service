@@ -1,6 +1,6 @@
 // Windmill node script — calls stripe POST /prices/create
 export async function main(
-  appId: string,
+  orgId: string,
   productId: string,
   unitAmountInCents: number,
   currency?: string,
@@ -21,7 +21,7 @@ export async function main(
         "Content-Type": "application/json",
         "X-API-Key": apiKey,
       },
-      body: JSON.stringify({ appId, productId, unitAmountInCents, currency, recurring, metadata }),
+      body: JSON.stringify({ orgId, productId, unitAmountInCents, currency, recurring, metadata }),
     }
   );
 

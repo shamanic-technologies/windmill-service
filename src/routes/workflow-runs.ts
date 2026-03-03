@@ -26,20 +26,20 @@ router.post(
     try {
       const body = ExecuteByNameSchema.parse(req.body);
 
-      // Look up workflow by (appId + name)
+      // Look up workflow by (orgId + name)
       const [workflow] = await db
         .select()
         .from(workflows)
         .where(
           and(
-            eq(workflows.appId, body.appId),
+            eq(workflows.orgId, body.orgId),
             eq(workflows.name, req.params.name),
           )
         );
 
       if (!workflow) {
         res.status(404).json({
-          error: `Workflow "${req.params.name}" not found for app "${body.appId}"`,
+          error: `Workflow "${req.params.name}" not found for org "${body.orgId}"`,
         });
         return;
       }
@@ -51,12 +51,13 @@ router.post(
         return;
       }
 
-      // Run in Windmill — inject appId so nodes can access it via flow_input.appId
+      // Run in Windmill — inject orgId and userId so nodes can access them via flow_input
+      const userId = res.locals.userId as string;
       let windmillJobId: string | null = null;
       const client = getWindmillClient();
       if (client) {
         try {
-          const flowInputs = { ...body.inputs, appId: body.appId, serviceEnvs: collectServiceEnvs() };
+          const flowInputs = { ...body.inputs, orgId: body.orgId, userId, serviceEnvs: collectServiceEnvs() };
           windmillJobId = await client.runFlow(
             workflow.windmillFlowPath,
             flowInputs
@@ -74,12 +75,13 @@ router.post(
       }
 
       // Create workflow run in DB
-      // Use provided orgId (user context) or fall back to workflow's orgId
       const [run] = await db
         .insert(workflowRuns)
         .values({
           workflowId: workflow.id,
-          orgId: body.orgId ?? workflow.orgId,
+          orgId: body.orgId,
+          userId,
+          parentRunId: body.parentRunId,
           campaignId: workflow.campaignId,
           subrequestId: workflow.subrequestId,
           runId: body.runId,
@@ -124,13 +126,13 @@ router.post("/workflows/:id/execute", requireApiKey, async (req, res) => {
       return;
     }
 
-    // Run in Windmill — inject appId so nodes can access it via flow_input.appId
+    // Run in Windmill — inject orgId and userId so nodes can access them via flow_input
+    const executeUserId = res.locals.userId as string;
     let windmillJobId: string | null = null;
     const client = getWindmillClient();
     if (client) {
       try {
-        const appId = body.appId ?? workflow.appId;
-        const flowInputs = { ...body.inputs, ...(appId ? { appId } : {}), serviceEnvs: collectServiceEnvs() };
+        const flowInputs = { ...body.inputs, orgId: workflow.orgId, userId: executeUserId, serviceEnvs: collectServiceEnvs() };
         windmillJobId = await client.runFlow(
           workflow.windmillFlowPath,
           flowInputs
@@ -150,6 +152,8 @@ router.post("/workflows/:id/execute", requireApiKey, async (req, res) => {
       .values({
         workflowId: workflow.id,
         orgId: workflow.orgId,
+        userId: executeUserId,
+        parentRunId: body.parentRunId,
         campaignId: workflow.campaignId,
         subrequestId: workflow.subrequestId,
         runId: body.runId,

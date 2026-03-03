@@ -1,6 +1,5 @@
 // Windmill node script — calls transactional-email POST /stats
 export async function main(
-  appId?: string,
   orgId?: string,
   userId?: string,
   eventType?: string,
@@ -19,7 +18,7 @@ export async function main(
         "Content-Type": "application/json",
         "x-api-key": apiKey,
       },
-      body: JSON.stringify({ appId, orgId, userId, eventType }),
+      body: JSON.stringify({ orgId, userId, eventType }),
     }
   );
 

@@ -20,7 +20,7 @@ export const smsReminder: DAG = {
       type: "client-service",
       config: {
         action: "list",
-        appId: "polaritycourse",
+        orgId: "polaritycourse",
       },
     },
     {

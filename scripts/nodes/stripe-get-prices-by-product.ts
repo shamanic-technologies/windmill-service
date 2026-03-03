@@ -1,6 +1,6 @@
 // Windmill node script — calls stripe GET /prices/by-product/:productId
 export async function main(
-  appId: string,
+  orgId: string,
   productId: string,
   serviceEnvs?: Record<string, string>,
 ) {
@@ -10,7 +10,7 @@ export async function main(
   if (!apiKey) throw new Error("STRIPE_SERVICE_API_KEY is not set");
 
   const url = new URL(`${baseUrl}/prices/by-product/${productId}`);
-  url.searchParams.set("appId", appId);
+  url.searchParams.set("orgId", orgId);
 
   const response = await fetch(
     url.toString(),

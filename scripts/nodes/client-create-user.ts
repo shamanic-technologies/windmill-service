@@ -1,11 +1,10 @@
 // Windmill node script — calls client POST /anonymous-users
 export async function main(
-  appId: string,
+  orgId: string,
   email: string,
   firstName?: string,
   lastName?: string,
   phone?: string,
-  orgId?: string,
   metadata?: Record<string, unknown>,
   serviceEnvs?: Record<string, string>,
 ) {
@@ -22,7 +21,7 @@ export async function main(
         "Content-Type": "application/json",
         "x-api-key": apiKey,
       },
-      body: JSON.stringify({ appId, email, firstName, lastName, phone, orgId, metadata }),
+      body: JSON.stringify({ orgId, email, firstName, lastName, phone, metadata }),
     }
   );
 

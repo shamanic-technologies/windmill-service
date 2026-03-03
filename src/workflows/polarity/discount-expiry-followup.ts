@@ -22,7 +22,7 @@ export const discountExpiryFollowup: DAG = {
       type: "client-service",
       config: {
         action: "list",
-        appId: "polaritycourse",
+        orgId: "polaritycourse",
       },
     },
     {
@@ -37,7 +37,7 @@ export const discountExpiryFollowup: DAG = {
       id: "send-followup",
       type: "transactional-email.send",
       config: {
-        appId: "polaritycourse",
+        orgId: "polaritycourse",
         eventType: "webinar-discount-expiring",
       },
       inputMapping: {

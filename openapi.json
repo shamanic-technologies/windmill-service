@@ -68,11 +68,7 @@
           "id": {
             "type": "string",
             "format": "uuid",
-            "description": "Workflow UUID. Not needed for execution — use name + appId instead."
-          },
-          "appId": {
-            "type": "string",
-            "description": "Application identifier."
+            "description": "Workflow UUID."
           },
           "orgId": {
             "type": "string",
@@ -102,7 +98,7 @@
           },
           "name": {
             "type": "string",
-            "description": "Workflow name. Use this with appId to execute via /workflows/by-name/{name}/execute."
+            "description": "Workflow name. Use this with orgId to execute via /workflows/by-name/{name}/execute."
           },
           "displayName": {
             "type": "string",
@@ -152,7 +148,6 @@
         },
         "required": [
           "id",
-          "appId",
           "orgId",
           "brandId",
           "humanId",
@@ -279,11 +274,6 @@
       "CreateWorkflowRequest": {
         "type": "object",
         "properties": {
-          "appId": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Application identifier. Workflows are scoped to appId."
-          },
           "orgId": {
             "type": "string",
             "minLength": 1,
@@ -304,7 +294,7 @@
           "name": {
             "type": "string",
             "minLength": 1,
-            "description": "Workflow name. Must be unique within the appId. Used to execute by name later."
+            "description": "Workflow name. Must be unique within the orgId. Used to execute by name later."
           },
           "description": {
             "type": "string",
@@ -324,7 +314,6 @@
           }
         },
         "required": [
-          "appId",
           "orgId",
           "name",
           "category",
@@ -454,10 +443,20 @@
             "type": "string",
             "nullable": true
           },
+          "userId": {
+            "type": "string",
+            "nullable": true,
+            "description": "User ID from the execution context."
+          },
           "runId": {
             "type": "string",
             "nullable": true,
             "description": "External run ID (if provided at execution time)."
+          },
+          "parentRunId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Parent run ID (if linked to a parent execution)."
           },
           "windmillJobId": {
             "type": "string",
@@ -502,7 +501,9 @@
           "orgId",
           "campaignId",
           "subrequestId",
+          "userId",
           "runId",
+          "parentRunId",
           "windmillJobId",
           "windmillWorkspace",
           "status",
@@ -515,10 +516,6 @@
       "ExecuteWorkflowRequest": {
         "type": "object",
         "properties": {
-          "appId": {
-            "type": "string",
-            "description": "App ID override. If not provided, falls back to the workflow's stored appId."
-          },
           "inputs": {
             "type": "object",
             "additionalProperties": {
@@ -529,6 +526,10 @@
           "runId": {
             "type": "string",
             "description": "Optional external run ID for cost tracking via runs-service."
+          },
+          "parentRunId": {
+            "type": "string",
+            "description": "Optional parent run ID to link this execution to a parent run."
           }
         }
       },
@@ -672,15 +673,10 @@
       "DeployWorkflowsRequest": {
         "type": "object",
         "properties": {
-          "appId": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Your application identifier. Workflows are scoped to (appId + signature). Use the same appId when executing. This is idempotent — deploying the same DAG updates the existing workflow."
-          },
           "orgId": {
             "type": "string",
             "minLength": 1,
-            "description": "Organization ID that owns these workflows. If omitted, falls back to appId for backward compatibility."
+            "description": "Organization ID that owns these workflows. Workflows are scoped to (orgId + signature). This is idempotent — deploying the same DAG updates the existing workflow."
           },
           "workflows": {
             "type": "array",
@@ -692,7 +688,7 @@
           }
         },
         "required": [
-          "appId",
+          "orgId",
           "workflows"
         ]
       },
@@ -741,15 +737,6 @@
           "audienceType",
           "generatedDescription"
         ]
-      },
-      "KeySource": {
-        "type": "string",
-        "enum": [
-          "app",
-          "byok",
-          "platform"
-        ],
-        "description": "Required. Where to resolve the Anthropic API key: \"app\", \"platform\", or \"byok\"."
       },
       "GenerateWorkflowHints": {
         "type": "object",
@@ -815,18 +802,10 @@
       "GenerateWorkflowRequest": {
         "type": "object",
         "properties": {
-          "appId": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Application identifier. The generated workflow will be deployed under this appId."
-          },
           "orgId": {
             "type": "string",
             "minLength": 1,
-            "description": "Organization ID."
-          },
-          "keySource": {
-            "$ref": "#/components/schemas/KeySource"
+            "description": "Organization ID. The generated workflow will be deployed under this orgId."
           },
           "description": {
             "type": "string",
@@ -841,9 +820,7 @@
           }
         },
         "required": [
-          "appId",
           "orgId",
-          "keySource",
           "description"
         ]
       },
@@ -948,14 +925,10 @@
       "ExecuteByNameRequest": {
         "type": "object",
         "properties": {
-          "appId": {
-            "type": "string",
-            "minLength": 1,
-            "description": "Must match the appId used during deploy."
-          },
           "orgId": {
             "type": "string",
-            "description": "Organization ID for this execution (overrides workflow's orgId if set)."
+            "minLength": 1,
+            "description": "Organization ID. Must match the orgId used during deploy."
           },
           "inputs": {
             "type": "object",
@@ -967,10 +940,14 @@
           "runId": {
             "type": "string",
             "description": "Optional external run ID for cost tracking via runs-service."
+          },
+          "parentRunId": {
+            "type": "string",
+            "description": "Optional parent run ID to link this execution to a parent run."
           }
         },
         "required": [
-          "appId"
+          "orgId"
         ]
       }
     },
@@ -1058,14 +1035,6 @@
             },
             "required": false,
             "name": "orgId",
-            "in": "query"
-          },
-          {
-            "schema": {
-              "type": "string"
-            },
-            "required": false,
-            "name": "appId",
             "in": "query"
           },
           {
@@ -1620,7 +1589,7 @@
     "/workflows/deploy": {
       "put": {
         "summary": "Deploy (upsert) workflows by DAG signature",
-        "description": "Idempotent: creates new workflows or updates existing ones matched by (appId + DAG signature). The workflow name is auto-generated as {category}-{channel}-{audienceType}-{signatureName}. signatureName is a human-readable word auto-assigned to each unique DAG. After deploying, execute workflows via POST /workflows/by-name/{name}/execute.",
+        "description": "Idempotent: creates new workflows or updates existing ones matched by (orgId + DAG signature). The workflow name is auto-generated as {category}-{channel}-{audienceType}-{signatureName}. signatureName is a human-readable word auto-assigned to each unique DAG. After deploying, execute workflows via POST /workflows/by-name/{name}/execute.",
         "tags": [
           "Workflows"
         ],
@@ -1735,12 +1704,11 @@
           {
             "schema": {
               "type": "string",
-              "minLength": 1,
-              "description": "Application identifier. When omitted, searches across all apps."
+              "description": "Organization ID. When omitted, searches across all orgs."
             },
             "required": false,
-            "description": "Application identifier. When omitted, searches across all apps.",
-            "name": "appId",
+            "description": "Organization ID. When omitted, searches across all orgs.",
+            "name": "orgId",
             "in": "query"
           },
           {

@@ -47,8 +47,8 @@ export const SERVICE_CATALOG: ServiceInfo[] = [
   },
   {
     name: "key",
-    description: "API key management: per-app BYOK secrets (Stripe keys, etc.)",
-    keyEndpoints: ["POST /internal/app-keys", "GET /internal/app-keys/:provider/decrypt"],
+    description: "API key management: resolve external API keys by org/user",
+    keyEndpoints: ["GET /keys/:provider/decrypt"],
   },
   {
     name: "client",

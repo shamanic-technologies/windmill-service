@@ -3,7 +3,6 @@ export async function main(
   runIds?: string[],
   orgId?: string,
   brandId?: string,
-  appId?: string,
   campaignId?: string,
   serviceEnvs?: Record<string, string>,
 ) {
@@ -20,7 +19,7 @@ export async function main(
         "Content-Type": "application/json",
         "X-API-Key": apiKey,
       },
-      body: JSON.stringify({ runIds, orgId, brandId, appId, campaignId }),
+      body: JSON.stringify({ runIds, orgId, brandId, campaignId }),
     }
   );
 

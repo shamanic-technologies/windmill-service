@@ -158,12 +158,12 @@ export const DAG_WITH_CLIENT_NODES: DAG = {
     {
       id: "create-user",
       type: "client.createUser",
-      config: { appId: "test-app", email: "test@example.com" },
+      config: { orgId: "test-app", email: "test@example.com" },
     },
     {
       id: "list-users",
       type: "client.getUsers",
-      config: { appId: "test-app" },
+      config: { orgId: "test-app" },
     },
     {
       id: "update-user",
@@ -185,7 +185,7 @@ export const DAG_WITH_TRANSACTIONAL_EMAIL_SEND: DAG = {
     {
       id: "send-email",
       type: "transactional-email.send",
-      config: { appId: "test-app", eventType: "welcome" },
+      config: { orgId: "test-app", eventType: "welcome" },
     },
   ],
   edges: [],
@@ -196,12 +196,12 @@ export const DAG_WITH_MIXED_DOT_NOTATION: DAG = {
     {
       id: "create-user",
       type: "client.createUser",
-      config: { appId: "test-app", email: "user@example.com" },
+      config: { orgId: "test-app", email: "user@example.com" },
     },
     {
       id: "send-welcome",
       type: "transactional-email.send",
-      config: { appId: "test-app", eventType: "welcome" },
+      config: { orgId: "test-app", eventType: "welcome" },
       inputMapping: {
         recipientEmail: "$ref:create-user.output.user.email",
       },
@@ -260,7 +260,7 @@ export const DAG_WITH_RETRIES_ZERO: DAG = {
     {
       id: "send-email",
       type: "transactional-email.send",
-      config: { appId: "test-app", eventType: "welcome" },
+      config: { orgId: "test-app", eventType: "welcome" },
       retries: 0,
     },
   ],
@@ -370,7 +370,7 @@ export const DAG_WITH_DOT_NOTATION_AND_STATIC_BASE: DAG = {
       },
       inputMapping: {
         "body.to": "$ref:start-run.output.lead.data.email",
-        "body.appId": "$ref:start-run.output.appId",
+        "body.orgId": "$ref:start-run.output.orgId",
         "body.subject": "$ref:email-generate.output.subject",
         "body.metadata.emailGenerationId": "$ref:email-generate.output.id",
       },
@@ -499,7 +499,7 @@ export const POLARITY_WELCOME_DAG: DAG = {
       id: "send-welcome",
       type: "transactional-email.send",
       config: {
-        appId: "polaritycourse",
+        orgId: "polaritycourse",
         eventType: "webinar-registration-welcome",
       },
       inputMapping: {

@@ -1,6 +1,6 @@
-// Windmill node script — calls client GET /anonymous-users?appId=...
+// Windmill node script — calls client GET /anonymous-users?orgId=...
 export async function main(
-  appId: string,
+  orgId: string,
   limit?: number,
   offset?: number,
   serviceEnvs?: Record<string, string>,
@@ -10,7 +10,7 @@ export async function main(
   if (!baseUrl) throw new Error("CLIENT_SERVICE_URL is not set");
   if (!apiKey) throw new Error("CLIENT_SERVICE_API_KEY is not set");
 
-  const params = new URLSearchParams({ appId });
+  const params = new URLSearchParams({ orgId });
   if (limit) params.set("limit", String(limit));
   if (offset) params.set("offset", String(offset));
 

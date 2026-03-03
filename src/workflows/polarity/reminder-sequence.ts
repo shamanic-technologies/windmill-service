@@ -17,7 +17,7 @@ export const reminderSequence: DAG = {
       type: "client-service",
       config: {
         action: "list",
-        appId: "polaritycourse",
+        orgId: "polaritycourse",
       },
     },
     {
@@ -32,7 +32,7 @@ export const reminderSequence: DAG = {
       id: "send-reminder",
       type: "transactional-email.send",
       config: {
-        appId: "polaritycourse",
+        orgId: "polaritycourse",
       },
       inputMapping: {
         recipientEmail: "$ref:loop-contacts.output.email",

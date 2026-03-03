@@ -12,7 +12,6 @@ export const workflows = pgTable(
   "workflows",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    appId: text("app_id").notNull(),
     orgId: text("org_id").notNull(),
     brandId: text("brand_id"),
     humanId: text("human_id"),
@@ -34,16 +33,15 @@ export const workflows = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
   },
   (table) => [
-    index("idx_workflows_app").on(table.appId),
     index("idx_workflows_org").on(table.orgId),
     index("idx_workflows_campaign").on(table.campaignId),
-    uniqueIndex("idx_workflows_app_name_unique")
-      .on(table.appId, table.name),
-    uniqueIndex("idx_workflows_app_signature_unique")
-      .on(table.appId, table.signature),
-    uniqueIndex("idx_workflows_app_signature_name_unique")
-      .on(table.appId, table.signatureName),
-    index("idx_workflows_style").on(table.appId, table.styleName),
+    uniqueIndex("idx_workflows_org_name_unique")
+      .on(table.orgId, table.name),
+    uniqueIndex("idx_workflows_org_signature_unique")
+      .on(table.orgId, table.signature),
+    uniqueIndex("idx_workflows_org_signature_name_unique")
+      .on(table.orgId, table.signatureName),
+    index("idx_workflows_org_style").on(table.orgId, table.styleName),
   ]
 );
 
@@ -53,9 +51,11 @@ export const workflowRuns = pgTable(
     id: uuid("id").primaryKey().defaultRandom(),
     workflowId: uuid("workflow_id").references(() => workflows.id),
     orgId: text("org_id").notNull(),
+    userId: text("user_id"),
     campaignId: text("campaign_id"),
     subrequestId: text("subrequest_id"),
     runId: text("run_id"),
+    parentRunId: text("parent_run_id"),
     windmillJobId: text("windmill_job_id"),
     windmillWorkspace: text("windmill_workspace").notNull().default("prod"),
     status: text("status").notNull().default("queued"),

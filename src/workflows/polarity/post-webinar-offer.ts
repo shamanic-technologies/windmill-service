@@ -17,7 +17,7 @@ export const postWebinarOffer: DAG = {
       type: "client-service",
       config: {
         action: "list",
-        appId: "polaritycourse",
+        orgId: "polaritycourse",
       },
     },
     {
@@ -32,7 +32,7 @@ export const postWebinarOffer: DAG = {
       id: "send-offer",
       type: "transactional-email.send",
       config: {
-        appId: "polaritycourse",
+        orgId: "polaritycourse",
         eventType: "webinar-post-offer",
       },
       inputMapping: {

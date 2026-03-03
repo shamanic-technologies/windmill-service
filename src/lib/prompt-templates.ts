@@ -223,7 +223,7 @@ Campaign service orchestrates workflow execution with budget constraints. Key co
 4. Set retries: 0 for non-idempotent operations (email sends, SMS, queue consumes)
 5. Use onError for workflows that need cleanup on failure (e.g. mark run as failed via end-run)
 6. Use "condition" nodes for branching, not skipIf (skipIf only skips one step)
-7. The http.call node auto-injects appId and serviceEnvs from flow_input — no need to map them
+7. The http.call node auto-injects orgId, userId, and serviceEnvs from flow_input — no need to map them
 8. Campaign workflows should use the chassis pattern: gate-check → start-run → ... → end-run, with onError → end-run-error
 
 ## Example: Cold Email Outreach with Branching
@@ -247,7 +247,7 @@ Campaign service orchestrates workflow execution with budget constraints. Key co
       "id": "fetch-lead",
       "type": "http.call",
       "config": { "service": "lead", "method": "POST", "path": "/buffer/next" },
-      "inputMapping": { "body.campaignId": "$ref:flow_input.campaignId", "body.appId": "$ref:start-run.output.appId" },
+      "inputMapping": { "body.campaignId": "$ref:flow_input.campaignId", "body.orgId": "$ref:start-run.output.orgId" },
       "retries": 0
     },
     { "id": "check-lead", "type": "condition" },

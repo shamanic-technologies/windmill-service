@@ -1,6 +1,6 @@
 // Windmill node script — calls stripe POST /coupons/create
 export async function main(
-  appId: string,
+  orgId: string,
   id?: string,
   name?: string,
   percentOff?: number,
@@ -26,7 +26,7 @@ export async function main(
         "Content-Type": "application/json",
         "X-API-Key": apiKey,
       },
-      body: JSON.stringify({ appId, id, name, percentOff, amountOffInCents, currency, duration, durationInMonths, maxRedemptions, redeemBy, metadata }),
+      body: JSON.stringify({ orgId, id, name, percentOff, amountOffInCents, currency, duration, durationInMonths, maxRedemptions, redeemBy, metadata }),
     }
   );
 

@@ -27,7 +27,7 @@ export const paymentConfirmation: DAG = {
       id: "send-confirmation",
       type: "transactional-email.send",
       config: {
-        appId: "polaritycourse",
+        orgId: "polaritycourse",
         eventType: "course-purchase-confirmation",
       },
       inputMapping: {

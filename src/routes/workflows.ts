@@ -45,11 +45,10 @@ function generateFlowPath(scope: string, name: string): string {
 router.post("/workflows/generate", requireApiKey, async (req, res) => {
   try {
     const body = GenerateWorkflowSchema.parse(req.body);
+    const orgId = body.orgId;
+    const userId = res.locals.userId as string;
 
-    const anthropicApiKey = await fetchAnthropicKey(body.keySource, {
-      appId: body.appId,
-      orgId: body.orgId,
-    });
+    const { key: anthropicApiKey } = await fetchAnthropicKey({ orgId, userId });
 
     const generated = await generateWorkflow(
       { description: body.description, hints: body.hints, style: body.style },
@@ -62,7 +61,7 @@ router.post("/workflows/generate", requireApiKey, async (req, res) => {
     const existingWorkflows = await db
       .select({ signatureName: workflows.signatureName })
       .from(workflows)
-      .where(eq(workflows.appId, body.appId));
+      .where(eq(workflows.orgId, orgId));
     const usedNames = new Set(existingWorkflows.map((w) => w.signatureName));
 
     const [existing] = await db
@@ -70,7 +69,7 @@ router.post("/workflows/generate", requireApiKey, async (req, res) => {
       .from(workflows)
       .where(
         and(
-          eq(workflows.appId, body.appId),
+          eq(workflows.orgId, orgId),
           eq(workflows.signature, signature),
         )
       );
@@ -140,13 +139,13 @@ router.post("/workflows/generate", requireApiKey, async (req, res) => {
           .replace(/[^a-z0-9]+/g, "-")
           .replace(/^-|-$/g, "");
 
-        // Count existing workflows with same (appId, styleName) for versioning
+        // Count existing workflows with same (orgId, styleName) for versioning
         const sameStyle = await db
           .select({ id: workflows.id })
           .from(workflows)
           .where(
             and(
-              eq(workflows.appId, body.appId),
+              eq(workflows.orgId, orgId),
               eq(workflows.styleName, styleName),
             )
           );
@@ -168,7 +167,7 @@ router.post("/workflows/generate", requireApiKey, async (req, res) => {
 
       const name = `${generated.category}-${generated.channel}-${generated.audienceType}-${signatureName}`;
       const openFlow = dagToOpenFlow(dag, name);
-      const flowPath = generateFlowPath(body.appId, name);
+      const flowPath = generateFlowPath(orgId, name);
       const client = getWindmillClient();
 
       if (client) {
@@ -188,8 +187,7 @@ router.post("/workflows/generate", requireApiKey, async (req, res) => {
       const [created] = await db
         .insert(workflows)
         .values({
-          appId: body.appId,
-          orgId: body.orgId,
+          orgId,
           name,
           displayName,
           description: generated.description,
@@ -292,7 +290,7 @@ router.post("/workflows", requireApiKey, async (req, res) => {
     const existingWorkflows = await db
       .select({ signatureName: workflows.signatureName })
       .from(workflows)
-      .where(eq(workflows.appId, body.appId));
+      .where(eq(workflows.orgId, body.orgId));
     const usedNames = new Set(existingWorkflows.map((w) => w.signatureName));
     const signatureName = pickSignatureName(signature, usedNames);
 
@@ -300,7 +298,6 @@ router.post("/workflows", requireApiKey, async (req, res) => {
     const [workflow] = await db
       .insert(workflows)
       .values({
-        appId: body.appId,
         orgId: body.orgId,
         brandId: body.brandId,
         campaignId: body.campaignId,
@@ -328,10 +325,11 @@ router.post("/workflows", requireApiKey, async (req, res) => {
   }
 });
 
-// PUT /workflows/deploy — Batch upsert workflows by (appId + signature)
+// PUT /workflows/deploy — Batch upsert workflows by (orgId + signature)
 router.put("/workflows/deploy", requireApiKey, async (req, res) => {
   try {
     const body = DeployWorkflowsSchema.parse(req.body);
+    const orgId = body.orgId;
 
     // Validate ALL DAGs first — reject if any are invalid
     const dagErrors: { index: number; errors: unknown[] }[] = [];
@@ -346,27 +344,26 @@ router.put("/workflows/deploy", requireApiKey, async (req, res) => {
       return;
     }
 
-    // Fetch all existing signatureNames for this appId to avoid collisions
+    // Fetch all existing signatureNames for this orgId to avoid collisions
     const existingWorkflows = await db
       .select({ signatureName: workflows.signatureName })
       .from(workflows)
-      .where(eq(workflows.appId, body.appId));
+      .where(eq(workflows.orgId, orgId));
     const usedNames = new Set(existingWorkflows.map((w) => w.signatureName));
 
-    const orgId = body.orgId ?? body.appId;
     const results: { id: string; name: string; category: string; channel: string; audienceType: string; signature: string; signatureName: string; action: "created" | "updated" }[] = [];
 
     for (const wf of body.workflows) {
       const dag = wf.dag as DAG;
       const signature = computeDAGSignature(wf.dag);
 
-      // Check if workflow already exists for this (appId, signature)
+      // Check if workflow already exists for this (orgId, signature)
       const [existing] = await db
         .select()
         .from(workflows)
         .where(
           and(
-            eq(workflows.appId, body.appId),
+            eq(workflows.orgId, orgId),
             eq(workflows.signature, signature),
           )
         );
@@ -420,7 +417,7 @@ router.put("/workflows/deploy", requireApiKey, async (req, res) => {
 
         const name = `${wf.category}-${wf.channel}-${wf.audienceType}-${signatureName}`;
         const openFlow = dagToOpenFlow(dag, name);
-        const flowPath = generateFlowPath(body.appId, name);
+        const flowPath = generateFlowPath(orgId, name);
         const client = getWindmillClient();
 
         if (client) {
@@ -440,7 +437,6 @@ router.put("/workflows/deploy", requireApiKey, async (req, res) => {
         const [created] = await db
           .insert(workflows)
           .values({
-            appId: body.appId,
             orgId,
             name,
             displayName: name,
@@ -487,11 +483,11 @@ router.get("/workflows/best", requireApiKey, async (req, res) => {
       res.status(400).json({ error: "Validation error", details: query.error });
       return;
     }
-    const { appId, category, channel, audienceType, objective } = query.data;
+    const { orgId, category, channel, audienceType, objective } = query.data;
 
     // 1. Get all workflows matching the dimensions (all filters optional)
     const conditions: ReturnType<typeof eq>[] = [];
-    if (appId) conditions.push(eq(workflows.appId, appId));
+    if (orgId) conditions.push(eq(workflows.orgId, orgId));
     if (category) conditions.push(eq(workflows.category, category));
     if (channel) conditions.push(eq(workflows.channel, channel));
     if (audienceType) conditions.push(eq(workflows.audienceType, audienceType));
@@ -634,15 +630,12 @@ router.get("/workflows/best", requireApiKey, async (req, res) => {
 // GET /workflows — List workflows
 router.get("/workflows", requireApiKey, async (req, res) => {
   try {
-    const { orgId, appId, brandId, humanId, campaignId, category, channel, audienceType } = req.query;
+    const { orgId, brandId, humanId, campaignId, category, channel, audienceType } = req.query;
 
     const conditions: ReturnType<typeof eq>[] = [];
 
     if (orgId && typeof orgId === "string") {
       conditions.push(eq(workflows.orgId, orgId));
-    }
-    if (appId && typeof appId === "string") {
-      conditions.push(eq(workflows.appId, appId));
     }
     if (brandId && typeof brandId === "string") {
       conditions.push(eq(workflows.brandId, brandId));
