@@ -12,28 +12,37 @@ export async function main(
     runId: string;
   },
   serviceEnvs?: Record<string, string>,
+  orgId?: string,
+  userId?: string,
+  runId?: string,
 ) {
   const baseUrl = serviceEnvs?.["OUTBOUND_SENDING_URL"] ?? Bun.env.OUTBOUND_SENDING_URL;
   const apiKey = serviceEnvs?.["OUTBOUND_SENDING_API_KEY"] ?? Bun.env.OUTBOUND_SENDING_API_KEY;
   if (!baseUrl) throw new Error("OUTBOUND_SENDING_URL is not set");
   if (!apiKey) throw new Error("OUTBOUND_SENDING_API_KEY is not set");
 
+  const resolvedOrgId = orgId ?? context?.orgId;
+  const resolvedRunId = runId ?? context?.runId;
+  const reqHeaders: Record<string, string> = {
+    "Content-Type": "application/json",
+    "x-api-key": apiKey,
+  };
+  if (resolvedOrgId) reqHeaders["x-org-id"] = resolvedOrgId;
+  if (userId) reqHeaders["x-user-id"] = userId;
+  if (resolvedRunId) reqHeaders["x-run-id"] = resolvedRunId;
+
   const response = await fetch(
     `${baseUrl}/send`,
     {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": apiKey,
-        "x-org-id": context.orgId,
-      },
+      headers: reqHeaders,
       body: JSON.stringify({
         type: sendType,
         channel,
         toEmail,
         subject,
         bodyHtml,
-        runId: context.runId,
+        runId: resolvedRunId,
         campaignId: context.campaignId,
         brandId: context.brandId,
       }),
