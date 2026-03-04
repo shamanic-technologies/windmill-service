@@ -102,9 +102,28 @@ describe("POST /workflows", () => {
     expect(res.body.category).toBe("sales");
     expect(res.body.channel).toBe("email");
     expect(res.body.audienceType).toBe("cold-outreach");
+    expect(res.body.tags).toEqual([]);
     expect(res.body.signature).toMatch(/^[a-f0-9]{64}$/);
     expect(res.body.signatureName).toBeTruthy();
     expect(res.body.windmillFlowPath).toContain("f/workflows/org-1/");
+  });
+
+  it("creates a workflow with tags", async () => {
+    const res = await request
+      .post("/workflows")
+      .set(AUTH)
+      .send({
+        orgId: "org-1",
+        name: "Multi-Channel Flow",
+        category: "sales",
+        channel: "email",
+        audienceType: "cold-outreach",
+        tags: ["email", "linkedin"],
+        dag: VALID_LINEAR_DAG,
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.tags).toEqual(["email", "linkedin"]);
   });
 
   it("rejects an invalid DAG", async () => {
@@ -225,6 +244,43 @@ const DEPLOY_ITEM = {
 describe("PUT /workflows/deploy", () => {
   beforeEach(() => {
     mockDbRows.length = 0;
+  });
+
+  it("deploys a workflow with tags", async () => {
+    const res = await request
+      .put("/workflows/deploy")
+      .set(AUTH)
+      .send({
+        orgId: "org-deploy",
+        workflows: [
+          {
+            ...DEPLOY_ITEM,
+            tags: ["email", "linkedin"],
+            dag: DAG_WITH_TRANSACTIONAL_EMAIL_SEND,
+          },
+        ],
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.workflows[0].tags).toEqual(["email", "linkedin"]);
+  });
+
+  it("defaults tags to empty array when omitted", async () => {
+    const res = await request
+      .put("/workflows/deploy")
+      .set(AUTH)
+      .send({
+        orgId: "org-deploy",
+        workflows: [
+          {
+            ...DEPLOY_ITEM,
+            dag: DAG_WITH_TRANSACTIONAL_EMAIL_SEND,
+          },
+        ],
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.workflows[0].tags).toEqual([]);
   });
 
   it("creates a workflow with auto-generated name and signatureName", async () => {

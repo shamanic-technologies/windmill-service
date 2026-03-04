@@ -118,6 +118,13 @@
           "audienceType": {
             "$ref": "#/components/schemas/WorkflowAudienceType"
           },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Free-form tags for filtering/grouping (e.g. [\"email\", \"linkedin\"])."
+          },
           "signature": {
             "type": "string",
             "description": "Deterministic SHA-256 hash of the canonical DAG JSON. Changes when any node, edge, or config changes."
@@ -160,6 +167,7 @@
           "category",
           "channel",
           "audienceType",
+          "tags",
           "signature",
           "signatureName",
           "windmillFlowPath",
@@ -309,6 +317,13 @@
           "audienceType": {
             "$ref": "#/components/schemas/WorkflowAudienceType"
           },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Free-form tags for filtering/grouping (e.g. channels used in the DAG: [\"email\", \"linkedin\"]). Complementary to category/channel/audienceType."
+          },
           "dag": {
             "$ref": "#/components/schemas/DAG"
           }
@@ -384,6 +399,13 @@
           },
           "description": {
             "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Updated tags for filtering/grouping."
           },
           "dag": {
             "$ref": "#/components/schemas/DAG"
@@ -567,6 +589,13 @@
           "audienceType": {
             "$ref": "#/components/schemas/WorkflowAudienceType"
           },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Tags assigned to this workflow."
+          },
           "signature": {
             "type": "string",
             "description": "SHA-256 hash of the canonical DAG JSON."
@@ -589,6 +618,7 @@
           "category",
           "channel",
           "audienceType",
+          "tags",
           "signature",
           "signatureName",
           "action"
@@ -644,6 +674,13 @@
                 "description": "Workflow audience type. Required — used to build the workflow name."
               }
             ]
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Free-form tags for filtering/grouping (e.g. [\"email\", \"linkedin\"])."
           },
           "dag": {
             "$ref": "#/components/schemas/DAG"
@@ -1064,6 +1101,16 @@
             "required": false,
             "description": "Workflow audience type.",
             "name": "audienceType",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Filter workflows that contain this tag."
+            },
+            "required": false,
+            "description": "Filter workflows that contain this tag.",
+            "name": "tag",
             "in": "query"
           }
         ],

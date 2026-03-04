@@ -27,6 +27,7 @@ export const workflows = pgTable(
     signature: text("signature").notNull(),
     signatureName: text("signature_name").notNull(),
     dag: jsonb("dag").notNull(),
+    tags: jsonb("tags").default([]),
     windmillFlowPath: text("windmill_flow_path"),
     windmillWorkspace: text("windmill_workspace").notNull().default("prod"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
