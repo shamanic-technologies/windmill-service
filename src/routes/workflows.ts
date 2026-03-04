@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { workflows, workflowRuns } from "../db/schema.js";
 import { requireApiKey } from "../middleware/auth.js";
@@ -80,6 +80,7 @@ router.post("/workflows/generate", requireApiKey, async (req, res) => {
       category: string;
       channel: string;
       audienceType: string;
+      tags: string[];
       signature: string;
       signatureName: string;
       action: "created" | "updated";
@@ -122,6 +123,7 @@ router.post("/workflows/generate", requireApiKey, async (req, res) => {
         category: updated.category,
         channel: updated.channel,
         audienceType: updated.audienceType,
+        tags: (updated.tags as string[]) ?? [],
         signature: updated.signature,
         signatureName: updated.signatureName,
         action: "updated",
@@ -210,6 +212,7 @@ router.post("/workflows/generate", requireApiKey, async (req, res) => {
         category: created.category,
         channel: created.channel,
         audienceType: created.audienceType,
+        tags: (created.tags as string[]) ?? [],
         signature: created.signature,
         signatureName: created.signatureName,
         action: "created",
@@ -307,6 +310,7 @@ router.post("/workflows", requireApiKey, async (req, res) => {
         category: body.category,
         channel: body.channel,
         audienceType: body.audienceType,
+        tags: body.tags ?? [],
         signature,
         signatureName,
         dag: body.dag,
@@ -351,7 +355,7 @@ router.put("/workflows/deploy", requireApiKey, async (req, res) => {
       .where(eq(workflows.orgId, orgId));
     const usedNames = new Set(existingWorkflows.map((w) => w.signatureName));
 
-    const results: { id: string; name: string; category: string; channel: string; audienceType: string; signature: string; signatureName: string; action: "created" | "updated" }[] = [];
+    const results: { id: string; name: string; category: string; channel: string; audienceType: string; tags: string[]; signature: string; signatureName: string; action: "created" | "updated" }[] = [];
 
     for (const wf of body.workflows) {
       const dag = wf.dag as DAG;
@@ -386,6 +390,7 @@ router.put("/workflows/deploy", requireApiKey, async (req, res) => {
           }
         }
 
+        const updatedTags = wf.tags ?? (existing.tags as string[]) ?? [];
         const [updated] = await db
           .update(workflows)
           .set({
@@ -394,6 +399,7 @@ router.put("/workflows/deploy", requireApiKey, async (req, res) => {
             category: wf.category,
             channel: wf.channel,
             audienceType: wf.audienceType,
+            tags: updatedTags,
             dag: wf.dag,
             updatedAt: new Date(),
           })
@@ -406,6 +412,7 @@ router.put("/workflows/deploy", requireApiKey, async (req, res) => {
           category: updated.category,
           channel: updated.channel,
           audienceType: updated.audienceType,
+          tags: (updated.tags as string[]) ?? [],
           signature: updated.signature,
           signatureName: updated.signatureName,
           action: "updated",
@@ -444,6 +451,7 @@ router.put("/workflows/deploy", requireApiKey, async (req, res) => {
             category: wf.category,
             channel: wf.channel,
             audienceType: wf.audienceType,
+            tags: wf.tags ?? [],
             signature,
             signatureName,
             dag: wf.dag,
@@ -457,6 +465,7 @@ router.put("/workflows/deploy", requireApiKey, async (req, res) => {
           category: created.category,
           channel: created.channel,
           audienceType: created.audienceType,
+          tags: (created.tags as string[]) ?? [],
           signature: created.signature,
           signatureName: created.signatureName,
           action: "created",
@@ -630,7 +639,7 @@ router.get("/workflows/best", requireApiKey, async (req, res) => {
 // GET /workflows — List workflows
 router.get("/workflows", requireApiKey, async (req, res) => {
   try {
-    const { orgId, brandId, humanId, campaignId, category, channel, audienceType } = req.query;
+    const { orgId, brandId, humanId, campaignId, category, channel, audienceType, tag } = req.query;
 
     const conditions: ReturnType<typeof eq>[] = [];
 
@@ -654,6 +663,9 @@ router.get("/workflows", requireApiKey, async (req, res) => {
     }
     if (audienceType && typeof audienceType === "string") {
       conditions.push(eq(workflows.audienceType, audienceType));
+    }
+    if (tag && typeof tag === "string") {
+      conditions.push(sql`${workflows.tags} @> ${JSON.stringify([tag])}::jsonb`);
     }
 
     const results = conditions.length > 0
@@ -748,6 +760,7 @@ router.put("/workflows/:id", requireApiKey, async (req, res) => {
     const updates: Record<string, unknown> = { updatedAt: new Date() };
     if (body.name) updates.name = body.name;
     if (body.description !== undefined) updates.description = body.description;
+    if (body.tags !== undefined) updates.tags = body.tags;
 
     if (body.dag) {
       const dag = body.dag as DAG;
