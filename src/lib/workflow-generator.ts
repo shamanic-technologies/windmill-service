@@ -10,6 +10,7 @@ import {
   fetchLlmContext,
   fetchServiceSpec,
 } from "./api-registry-client.js";
+import type { IdentityHeaders } from "./key-service-client.js";
 
 export interface GenerateWorkflowInput {
   description: string;
@@ -48,10 +49,11 @@ export function setAnthropicClient(client: Anthropic | null): void {
 async function resolveToolCall(
   toolName: string,
   toolInput: Record<string, unknown>,
+  identity: IdentityHeaders,
 ): Promise<{ content: string; isError?: boolean }> {
   switch (toolName) {
     case "list_services": {
-      const context = await fetchLlmContext();
+      const context = await fetchLlmContext(identity);
       const summary = context.services.map((s) => ({
         name: s.service,
         description: s.description ?? s.title ?? "",
@@ -62,7 +64,7 @@ async function resolveToolCall(
     }
     case "get_service_endpoints": {
       const serviceName = toolInput.service as string;
-      const spec = await fetchServiceSpec(serviceName);
+      const spec = await fetchServiceSpec(serviceName, identity);
       return { content: JSON.stringify(spec, null, 2) };
     }
     default:
@@ -73,6 +75,7 @@ async function resolveToolCall(
 export async function generateWorkflow(
   input: GenerateWorkflowInput,
   anthropicApiKey: string,
+  identity: IdentityHeaders,
 ): Promise<GenerateWorkflowResult> {
   const client = overrideClient ?? new Anthropic({ apiKey: anthropicApiKey });
 
@@ -192,6 +195,7 @@ export async function generateWorkflow(
         const resolved = await resolveToolCall(
           toolBlock.name,
           toolBlock.input as Record<string, unknown>,
+          identity,
         );
         toolResults.push({
           type: "tool_result",

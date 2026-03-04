@@ -124,10 +124,11 @@ describe("POST /workflows/generate", () => {
     expect(res.body.category).toBe("sales");
     expect(res.body.channel).toBe("email");
     expect(res.body.audienceType).toBe("cold-outreach");
-    expect(mockFetchAnthropicKey).toHaveBeenCalledWith({ orgId: "org-1", userId: "user-1" });
+    expect(mockFetchAnthropicKey).toHaveBeenCalledWith({ orgId: "org-1", userId: "user-1", runId: "run-caller-1" });
     expect(mockGenerateWorkflow).toHaveBeenCalledWith(
       { description: "I want a cold email outreach workflow that finds leads and sends emails", hints: undefined, style: undefined },
       "resolved-anthropic-key",
+      { orgId: "org-1", userId: "user-1", runId: "run-caller-1" },
     );
   });
 
@@ -200,10 +201,11 @@ describe("POST /workflows/generate", () => {
         hints: { services: ["lead", "email-gateway"] },
       });
 
-    expect(mockFetchAnthropicKey).toHaveBeenCalledWith({ orgId: "org-1", userId: "user-1" });
+    expect(mockFetchAnthropicKey).toHaveBeenCalledWith({ orgId: "org-1", userId: "user-1", runId: "run-caller-1" });
     expect(mockGenerateWorkflow).toHaveBeenCalledWith(
       { description: "Cold email outreach with lead search", hints: { services: ["lead", "email-gateway"] }, style: undefined },
       "resolved-anthropic-key",
+      { orgId: "org-1", userId: "user-1", runId: "run-caller-1" },
     );
   });
 
@@ -271,6 +273,7 @@ describe("POST /workflows/generate", () => {
         style: { type: "human", humanId: "human-123", name: "Hormozi" },
       }),
       "resolved-anthropic-key",
+      { orgId: "org-1", userId: "user-1", runId: "run-caller-1" },
     );
   });
 

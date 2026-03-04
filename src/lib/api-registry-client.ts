@@ -1,3 +1,5 @@
+import type { IdentityHeaders } from "./key-service-client.js";
+
 export interface LlmServiceSummary {
   service: string;
   baseUrl: string;
@@ -33,12 +35,17 @@ function getApiRegistryConfig(): { baseUrl: string; apiKey: string } {
 }
 
 /** GET /llm-context — compact summary of all services and endpoints for LLM consumption */
-export async function fetchLlmContext(): Promise<LlmContextResponse> {
+export async function fetchLlmContext(identity: IdentityHeaders): Promise<LlmContextResponse> {
   const { baseUrl, apiKey } = getApiRegistryConfig();
 
   const res = await fetch(`${baseUrl}/llm-context`, {
     method: "GET",
-    headers: { "x-api-key": apiKey },
+    headers: {
+      "x-api-key": apiKey,
+      "x-org-id": identity.orgId,
+      "x-user-id": identity.userId,
+      "x-run-id": identity.runId,
+    },
   });
 
   if (!res.ok) {
@@ -54,6 +61,7 @@ export async function fetchLlmContext(): Promise<LlmContextResponse> {
 /** GET /openapi/:service — full OpenAPI spec for one service */
 export async function fetchServiceSpec(
   serviceName: string,
+  identity: IdentityHeaders,
 ): Promise<Record<string, unknown>> {
   const { baseUrl, apiKey } = getApiRegistryConfig();
 
@@ -61,7 +69,12 @@ export async function fetchServiceSpec(
     `${baseUrl}/openapi/${encodeURIComponent(serviceName)}`,
     {
       method: "GET",
-      headers: { "x-api-key": apiKey },
+      headers: {
+        "x-api-key": apiKey,
+        "x-org-id": identity.orgId,
+        "x-user-id": identity.userId,
+        "x-run-id": identity.runId,
+      },
     },
   );
 

@@ -1,5 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { fetchProviderRequirements, fetchAnthropicKey } from "../../src/lib/key-service-client.js";
+import { fetchProviderRequirements, fetchAnthropicKey, type IdentityHeaders } from "../../src/lib/key-service-client.js";
+
+const TEST_IDENTITY: IdentityHeaders = { orgId: "org-1", userId: "user-1", runId: "run-1" };
 
 describe("fetchProviderRequirements", () => {
   const originalUrl = process.env.KEY_SERVICE_URL;
@@ -18,14 +20,14 @@ describe("fetchProviderRequirements", () => {
 
   it("throws if KEY_SERVICE_URL is not set", async () => {
     delete process.env.KEY_SERVICE_URL;
-    await expect(fetchProviderRequirements([])).rejects.toThrow(
+    await expect(fetchProviderRequirements([], TEST_IDENTITY)).rejects.toThrow(
       "KEY_SERVICE_URL and KEY_SERVICE_API_KEY must be set"
     );
   });
 
   it("throws if KEY_SERVICE_API_KEY is not set", async () => {
     delete process.env.KEY_SERVICE_API_KEY;
-    await expect(fetchProviderRequirements([])).rejects.toThrow(
+    await expect(fetchProviderRequirements([], TEST_IDENTITY)).rejects.toThrow(
       "KEY_SERVICE_URL and KEY_SERVICE_API_KEY must be set"
     );
   });
@@ -46,7 +48,7 @@ describe("fetchProviderRequirements", () => {
 
     const result = await fetchProviderRequirements([
       { service: "apollo", method: "POST", path: "/search" },
-    ]);
+    ], TEST_IDENTITY);
 
     expect(result).toEqual(mockResponse);
     expect(fetch).toHaveBeenCalledWith(
@@ -56,6 +58,9 @@ describe("fetchProviderRequirements", () => {
         headers: expect.objectContaining({
           "Content-Type": "application/json",
           "x-api-key": "test-key-svc-key",
+          "x-org-id": "org-1",
+          "x-user-id": "user-1",
+          "x-run-id": "run-1",
         }),
       })
     );
@@ -72,7 +77,7 @@ describe("fetchProviderRequirements", () => {
       })
     );
 
-    await fetchProviderRequirements([]);
+    await fetchProviderRequirements([], TEST_IDENTITY);
 
     expect(fetch).toHaveBeenCalledWith(
       "http://localhost:4000/provider-requirements",
@@ -91,7 +96,7 @@ describe("fetchProviderRequirements", () => {
 
     await fetchProviderRequirements([
       { service: "apollo", method: "POST", path: "/search" },
-    ]);
+    ], TEST_IDENTITY);
 
     const calledUrl = (fetch as ReturnType<typeof vi.fn>).mock.calls[0][0] as string;
     expect(calledUrl).not.toContain("/internal/");
@@ -112,7 +117,7 @@ describe("fetchProviderRequirements", () => {
     await expect(
       fetchProviderRequirements([
         { service: "apollo", method: "POST", path: "/search" },
-      ])
+      ], TEST_IDENTITY)
     ).rejects.toThrow("key-service error:");
   });
 });
@@ -141,7 +146,7 @@ describe("fetchAnthropicKey", () => {
       })
     );
 
-    const result = await fetchAnthropicKey({ orgId: "org-1", userId: "user-1" });
+    const result = await fetchAnthropicKey({ orgId: "org-1", userId: "user-1", runId: "run-1" });
 
     expect(result).toEqual({ key: "sk-ant-key", keySource: "platform" });
     expect(fetch).toHaveBeenCalledWith(
@@ -150,6 +155,9 @@ describe("fetchAnthropicKey", () => {
         method: "GET",
         headers: expect.objectContaining({
           "x-api-key": "test-key-svc-key",
+          "x-org-id": "org-1",
+          "x-user-id": "user-1",
+          "x-run-id": "run-1",
           "x-caller-service": "workflow",
           "x-caller-method": "POST",
           "x-caller-path": "/workflows/generate",
@@ -167,7 +175,7 @@ describe("fetchAnthropicKey", () => {
       })
     );
 
-    const result = await fetchAnthropicKey({ orgId: "org-1", userId: "user-1" });
+    const result = await fetchAnthropicKey({ orgId: "org-1", userId: "user-1", runId: "run-1" });
 
     expect(result.key).toBe("sk-ant-org-key");
     expect(result.keySource).toBe("org");
@@ -185,14 +193,14 @@ describe("fetchAnthropicKey", () => {
     );
 
     await expect(
-      fetchAnthropicKey({ orgId: "org-1", userId: "user-1" })
+      fetchAnthropicKey({ orgId: "org-1", userId: "user-1", runId: "run-1" })
     ).rejects.toThrow("key-service error:");
   });
 
   it("throws if KEY_SERVICE_URL is not set", async () => {
     delete process.env.KEY_SERVICE_URL;
     await expect(
-      fetchAnthropicKey({ orgId: "org-1", userId: "user-1" })
+      fetchAnthropicKey({ orgId: "org-1", userId: "user-1", runId: "run-1" })
     ).rejects.toThrow("KEY_SERVICE_URL and KEY_SERVICE_API_KEY must be set");
   });
 
@@ -205,7 +213,7 @@ describe("fetchAnthropicKey", () => {
       })
     );
 
-    await fetchAnthropicKey({ orgId: "org with spaces", userId: "user-1" });
+    await fetchAnthropicKey({ orgId: "org with spaces", userId: "user-1", runId: "run-1" });
 
     expect(fetch).toHaveBeenCalledWith(
       "http://localhost:4000/keys/anthropic/decrypt?orgId=org+with+spaces&userId=user-1",

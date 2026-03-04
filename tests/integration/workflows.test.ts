@@ -575,10 +575,13 @@ describe("GET /workflows/:id/required-providers", () => {
     expect(res.status).toBe(200);
     expect(res.body.endpoints).toHaveLength(2);
     expect(res.body.providers).toEqual(["client", "transactional-email"]);
-    expect(mockFetchProviderRequirements).toHaveBeenCalledWith([
-      { service: "client", method: "POST", path: "/users" },
-      { service: "transactional-email", method: "POST", path: "/send" },
-    ]);
+    expect(mockFetchProviderRequirements).toHaveBeenCalledWith(
+      [
+        { service: "client", method: "POST", path: "/users" },
+        { service: "transactional-email", method: "POST", path: "/send" },
+      ],
+      { orgId: "org-1", userId: "user-1", runId: "run-caller-1" },
+    );
   });
 
   it("returns empty providers for workflows with no http.call nodes", async () => {

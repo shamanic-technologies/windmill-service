@@ -47,12 +47,15 @@ router.post("/workflows/generate", requireApiKey, async (req, res) => {
     const body = GenerateWorkflowSchema.parse(req.body);
     const orgId = body.orgId;
     const userId = res.locals.userId as string;
+    const runId = res.locals.runId as string;
+    const identity = { orgId, userId, runId };
 
-    const { key: anthropicApiKey } = await fetchAnthropicKey({ orgId, userId });
+    const { key: anthropicApiKey } = await fetchAnthropicKey({ orgId, userId, runId });
 
     const generated = await generateWorkflow(
       { description: body.description, hints: body.hints, style: body.style },
       anthropicApiKey,
+      identity,
     );
 
     const dag = generated.dag as DAG;
@@ -493,6 +496,11 @@ router.get("/workflows/best", requireApiKey, async (req, res) => {
       return;
     }
     const { orgId, category, channel, audienceType, objective } = query.data;
+    const identity = {
+      orgId: res.locals.orgId as string,
+      userId: res.locals.userId as string,
+      runId: res.locals.runId as string,
+    };
 
     // 1. Get all workflows matching the dimensions (all filters optional)
     const conditions: ReturnType<typeof eq>[] = [];
@@ -541,7 +549,7 @@ router.get("/workflows/best", requireApiKey, async (req, res) => {
     }
 
     // 3. Batch fetch costs from runs-service
-    const runCosts = await fetchRunCosts(allRunIds);
+    const runCosts = await fetchRunCosts(allRunIds, identity);
     const costByRunId = new Map(
       runCosts.map((c) => [c.runId, c.totalCostInUsdCents])
     );
@@ -564,7 +572,7 @@ router.get("/workflows/best", requireApiKey, async (req, res) => {
         0
       );
 
-      const stats = await fetchEmailStats(runIds);
+      const stats = await fetchEmailStats(runIds, identity);
       const outcomes =
         objective === "replies"
           ? (stats.transactional?.replied ?? 0) + (stats.broadcast?.replied ?? 0)
@@ -702,6 +710,12 @@ router.get("/workflows/:id", requireApiKey, async (req, res) => {
 // GET /workflows/:id/required-providers — Compute required BYOK providers for a workflow
 router.get("/workflows/:id/required-providers", requireApiKey, async (req, res) => {
   try {
+    const identity = {
+      orgId: res.locals.orgId as string,
+      userId: res.locals.userId as string,
+      runId: res.locals.runId as string,
+    };
+
     const [workflow] = await db
       .select()
       .from(workflows)
@@ -720,7 +734,7 @@ router.get("/workflows/:id/required-providers", requireApiKey, async (req, res) 
       return;
     }
 
-    const result = await fetchProviderRequirements(endpoints);
+    const result = await fetchProviderRequirements(endpoints, identity);
 
     res.json({
       endpoints,

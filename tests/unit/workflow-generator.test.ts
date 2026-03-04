@@ -171,6 +171,7 @@ function createMockAgenticResponse(toolCalls: Array<{ name: string; input: unkno
 }
 
 const TEST_API_KEY = "test-anthropic-key";
+const TEST_IDENTITY = { orgId: "org-1", userId: "user-1", runId: "run-1" };
 
 const MOCK_LLM_CONTEXT = {
   _description: "LLM-friendly context",
@@ -238,6 +239,7 @@ describe("generateWorkflow (fallback mode — no api-registry)", () => {
     const result = await generateWorkflow(
       { description: "Search leads and send cold emails" },
       TEST_API_KEY,
+      TEST_IDENTITY,
     );
 
     expect(result.dag).toEqual(VALID_LINEAR_DAG);
@@ -259,6 +261,7 @@ describe("generateWorkflow (fallback mode — no api-registry)", () => {
     const result = await generateWorkflow(
       { description: "Search leads and send cold emails" },
       TEST_API_KEY,
+      TEST_IDENTITY,
     );
 
     expect(result.dag).toEqual(VALID_LINEAR_DAG);
@@ -279,7 +282,7 @@ describe("generateWorkflow (fallback mode — no api-registry)", () => {
     mockCreate.mockResolvedValue(createMockToolResponse(invalidDag));
 
     await expect(
-      generateWorkflow({ description: "Bad workflow" }, TEST_API_KEY),
+      generateWorkflow({ description: "Bad workflow" }, TEST_API_KEY, TEST_IDENTITY),
     ).rejects.toThrow(GenerationValidationError);
 
     // 1 initial + 2 retries = 3 calls
@@ -298,6 +301,7 @@ describe("generateWorkflow (fallback mode — no api-registry)", () => {
         },
       },
       TEST_API_KEY,
+      TEST_IDENTITY,
     );
 
     const call = mockCreate.mock.calls[0][0];
@@ -317,14 +321,14 @@ describe("generateWorkflow (fallback mode — no api-registry)", () => {
     });
 
     await expect(
-      generateWorkflow({ description: "test workflow" }, TEST_API_KEY),
+      generateWorkflow({ description: "test workflow" }, TEST_API_KEY, TEST_IDENTITY),
     ).rejects.toThrow("LLM did not return a tool use response");
   });
 
   it("includes system prompt with DAG schema", async () => {
     mockCreate.mockResolvedValueOnce(createMockToolResponse(VALID_LINEAR_DAG));
 
-    await generateWorkflow({ description: "test workflow" }, TEST_API_KEY);
+    await generateWorkflow({ description: "test workflow" }, TEST_API_KEY, TEST_IDENTITY);
 
     const call = mockCreate.mock.calls[0][0];
     expect(call.system).toContain("DAG Format");
@@ -334,7 +338,7 @@ describe("generateWorkflow (fallback mode — no api-registry)", () => {
   it("uses forced tool_choice in fallback mode", async () => {
     mockCreate.mockResolvedValueOnce(createMockToolResponse(VALID_LINEAR_DAG));
 
-    await generateWorkflow({ description: "test workflow" }, TEST_API_KEY);
+    await generateWorkflow({ description: "test workflow" }, TEST_API_KEY, TEST_IDENTITY);
 
     const call = mockCreate.mock.calls[0][0];
     expect(call.tool_choice).toEqual({ type: "tool", name: "create_workflow" });
@@ -349,6 +353,7 @@ describe("generateWorkflow (fallback mode — no api-registry)", () => {
         style: { type: "human", name: "Hormozi", humanId: "human-123" },
       },
       TEST_API_KEY,
+      TEST_IDENTITY,
     );
 
     const call = mockCreate.mock.calls[0][0];
@@ -365,6 +370,7 @@ describe("generateWorkflow (fallback mode — no api-registry)", () => {
         style: { type: "brand", name: "My Brand", brandId: "brand-456" },
       },
       TEST_API_KEY,
+      TEST_IDENTITY,
     );
 
     const call = mockCreate.mock.calls[0][0];
@@ -378,6 +384,7 @@ describe("generateWorkflow (fallback mode — no api-registry)", () => {
     await generateWorkflow(
       { description: "Cold email outreach" },
       TEST_API_KEY,
+      TEST_IDENTITY,
     );
 
     const call = mockCreate.mock.calls[0][0];
@@ -388,7 +395,7 @@ describe("generateWorkflow (fallback mode — no api-registry)", () => {
   it("only provides create_workflow tool in fallback mode", async () => {
     mockCreate.mockResolvedValueOnce(createMockToolResponse(VALID_LINEAR_DAG));
 
-    await generateWorkflow({ description: "test workflow" }, TEST_API_KEY);
+    await generateWorkflow({ description: "test workflow" }, TEST_API_KEY, TEST_IDENTITY);
 
     const call = mockCreate.mock.calls[0][0];
     expect(call.tools).toHaveLength(1);
@@ -421,7 +428,7 @@ describe("generateWorkflow (agentic mode — with api-registry)", () => {
   it("uses auto tool_choice in agentic mode", async () => {
     mockCreate.mockResolvedValueOnce(createMockToolResponse(VALID_LINEAR_DAG));
 
-    await generateWorkflow({ description: "test workflow" }, TEST_API_KEY);
+    await generateWorkflow({ description: "test workflow" }, TEST_API_KEY, TEST_IDENTITY);
 
     const call = mockCreate.mock.calls[0][0];
     expect(call.tool_choice).toEqual({ type: "auto" });
@@ -430,7 +437,7 @@ describe("generateWorkflow (agentic mode — with api-registry)", () => {
   it("provides all three tools in agentic mode", async () => {
     mockCreate.mockResolvedValueOnce(createMockToolResponse(VALID_LINEAR_DAG));
 
-    await generateWorkflow({ description: "test workflow" }, TEST_API_KEY);
+    await generateWorkflow({ description: "test workflow" }, TEST_API_KEY, TEST_IDENTITY);
 
     const call = mockCreate.mock.calls[0][0];
     expect(call.tools).toHaveLength(3);
@@ -451,6 +458,7 @@ describe("generateWorkflow (agentic mode — with api-registry)", () => {
     const result = await generateWorkflow(
       { description: "Search leads and send cold emails" },
       TEST_API_KEY,
+      TEST_IDENTITY,
     );
 
     expect(result.dag).toEqual(VALID_LINEAR_DAG);
@@ -473,12 +481,13 @@ describe("generateWorkflow (agentic mode — with api-registry)", () => {
     const result = await generateWorkflow(
       { description: "Cold email outreach" },
       TEST_API_KEY,
+      TEST_IDENTITY,
     );
 
     expect(result.dag).toEqual(VALID_LINEAR_DAG);
     expect(mockCreate).toHaveBeenCalledTimes(3);
     expect(mockFetchLlmContext).toHaveBeenCalledTimes(1);
-    expect(mockFetchServiceSpec).toHaveBeenCalledWith("lead");
+    expect(mockFetchServiceSpec).toHaveBeenCalledWith("lead", TEST_IDENTITY);
   });
 
   it("handles multiple tool calls in a single turn", async () => {
@@ -495,12 +504,13 @@ describe("generateWorkflow (agentic mode — with api-registry)", () => {
     const result = await generateWorkflow(
       { description: "Cold email outreach" },
       TEST_API_KEY,
+      TEST_IDENTITY,
     );
 
     expect(result.dag).toEqual(VALID_LINEAR_DAG);
     expect(mockCreate).toHaveBeenCalledTimes(2);
     expect(mockFetchLlmContext).toHaveBeenCalledTimes(1);
-    expect(mockFetchServiceSpec).toHaveBeenCalledWith("lead");
+    expect(mockFetchServiceSpec).toHaveBeenCalledWith("lead", TEST_IDENTITY);
   });
 
   it("passes api-registry error to LLM as tool_result error", async () => {
@@ -516,6 +526,7 @@ describe("generateWorkflow (agentic mode — with api-registry)", () => {
     const result = await generateWorkflow(
       { description: "Cold email outreach" },
       TEST_API_KEY,
+      TEST_IDENTITY,
     );
 
     expect(result.dag).toEqual(VALID_LINEAR_DAG);
@@ -533,7 +544,7 @@ describe("generateWorkflow (agentic mode — with api-registry)", () => {
     );
 
     await expect(
-      generateWorkflow({ description: "Stuck workflow" }, TEST_API_KEY),
+      generateWorkflow({ description: "Stuck workflow" }, TEST_API_KEY, TEST_IDENTITY),
     ).rejects.toThrow("Generation exceeded maximum turns without producing a workflow");
   });
 
@@ -555,6 +566,7 @@ describe("generateWorkflow (agentic mode — with api-registry)", () => {
     const result = await generateWorkflow(
       { description: "Cold email outreach" },
       TEST_API_KEY,
+      TEST_IDENTITY,
     );
 
     expect(result.dag).toEqual(VALID_LINEAR_DAG);
@@ -564,7 +576,7 @@ describe("generateWorkflow (agentic mode — with api-registry)", () => {
   it("includes service discovery instructions in system prompt", async () => {
     mockCreate.mockResolvedValueOnce(createMockToolResponse(VALID_LINEAR_DAG));
 
-    await generateWorkflow({ description: "test workflow" }, TEST_API_KEY);
+    await generateWorkflow({ description: "test workflow" }, TEST_API_KEY, TEST_IDENTITY);
 
     const call = mockCreate.mock.calls[0][0];
     expect(call.system).toContain("Service Discovery (MANDATORY)");
@@ -575,7 +587,7 @@ describe("generateWorkflow (agentic mode — with api-registry)", () => {
   it("uses higher max_tokens in agentic mode", async () => {
     mockCreate.mockResolvedValueOnce(createMockToolResponse(VALID_LINEAR_DAG));
 
-    await generateWorkflow({ description: "test workflow" }, TEST_API_KEY);
+    await generateWorkflow({ description: "test workflow" }, TEST_API_KEY, TEST_IDENTITY);
 
     const call = mockCreate.mock.calls[0][0];
     expect(call.max_tokens).toBe(16384);

@@ -1,5 +1,11 @@
 import type { HttpEndpoint } from "./extract-http-endpoints.js";
 
+export interface IdentityHeaders {
+  orgId: string;
+  userId: string;
+  runId: string;
+}
+
 export interface ProviderRequirementsResponse {
   requirements: unknown[];
   providers: string[];
@@ -24,7 +30,8 @@ function getKeyServiceConfig(): { baseUrl: string; apiKey: string } {
 }
 
 export async function fetchProviderRequirements(
-  endpoints: HttpEndpoint[]
+  endpoints: HttpEndpoint[],
+  identity: IdentityHeaders,
 ): Promise<ProviderRequirementsResponse> {
   const { baseUrl, apiKey } = getKeyServiceConfig();
 
@@ -34,6 +41,9 @@ export async function fetchProviderRequirements(
     headers: {
       "Content-Type": "application/json",
       "x-api-key": apiKey,
+      "x-org-id": identity.orgId,
+      "x-user-id": identity.userId,
+      "x-run-id": identity.runId,
     },
     body: JSON.stringify({ endpoints }),
   });
@@ -49,7 +59,7 @@ export async function fetchProviderRequirements(
 }
 
 export async function fetchAnthropicKey(
-  opts: { orgId: string; userId: string },
+  opts: { orgId: string; userId: string; runId: string },
 ): Promise<KeyDecryptResponse> {
   const { baseUrl, apiKey } = getKeyServiceConfig();
 
@@ -69,6 +79,9 @@ export async function fetchAnthropicKey(
     method: "GET",
     headers: {
       "x-api-key": apiKey,
+      "x-org-id": opts.orgId,
+      "x-user-id": opts.userId,
+      "x-run-id": opts.runId,
       ...callerHeaders,
     },
   });

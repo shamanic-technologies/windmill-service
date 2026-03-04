@@ -1,3 +1,5 @@
+import type { IdentityHeaders } from "./key-service-client.js";
+
 // --- Config helpers (same pattern as key-service-client.ts) ---
 
 function getRunsServiceConfig(): { baseUrl: string; apiKey: string } {
@@ -47,7 +49,7 @@ export interface EmailStatsResponse {
 
 // --- Fetch run costs from runs-service ---
 
-export async function fetchRunCosts(runIds: string[]): Promise<RunCost[]> {
+export async function fetchRunCosts(runIds: string[], identity: IdentityHeaders): Promise<RunCost[]> {
   if (runIds.length === 0) return [];
 
   const { baseUrl, apiKey } = getRunsServiceConfig();
@@ -57,7 +59,12 @@ export async function fetchRunCosts(runIds: string[]): Promise<RunCost[]> {
     runIds.map(async (runId) => {
       const res = await fetch(`${baseUrl}/v1/runs/${runId}`, {
         method: "GET",
-        headers: { "x-api-key": apiKey },
+        headers: {
+          "x-api-key": apiKey,
+          "x-org-id": identity.orgId,
+          "x-user-id": identity.userId,
+          "x-run-id": identity.runId,
+        },
       });
       if (!res.ok) {
         console.warn(
@@ -93,7 +100,8 @@ const EMPTY_STATS: EmailStats = {
 };
 
 export async function fetchEmailStats(
-  runIds: string[]
+  runIds: string[],
+  identity: IdentityHeaders,
 ): Promise<EmailStatsResponse> {
   if (runIds.length === 0) {
     return { transactional: { ...EMPTY_STATS }, broadcast: { ...EMPTY_STATS } };
@@ -106,6 +114,9 @@ export async function fetchEmailStats(
     headers: {
       "Content-Type": "application/json",
       "x-api-key": apiKey,
+      "x-org-id": identity.orgId,
+      "x-user-id": identity.userId,
+      "x-run-id": identity.runId,
     },
     body: JSON.stringify({ runIds }),
   });
