@@ -146,14 +146,16 @@ router.post(
       }
 
       // Create workflow run in DB
+      // Prefer campaignId/subrequestId from caller inputs over workflow record
+      // (workflow record values are null for deployed workflows; callers pass them at runtime)
       const [run] = await db
         .insert(workflowRuns)
         .values({
           workflowId: workflow.id,
           orgId,
           userId,
-          campaignId: workflow.campaignId,
-          subrequestId: workflow.subrequestId,
+          campaignId: (body.inputs?.campaignId as string | undefined) ?? workflow.campaignId,
+          subrequestId: (body.inputs?.subrequestId as string | undefined) ?? workflow.subrequestId,
           runId: ownRunId,
           windmillJobId,
           windmillWorkspace: workflow.windmillWorkspace,
@@ -260,14 +262,15 @@ router.post("/workflows/:id/execute", requireApiKey, async (req, res) => {
     }
 
     // Create workflow run in DB
+    // Prefer campaignId/subrequestId from caller inputs over workflow record
     const [run] = await db
       .insert(workflowRuns)
       .values({
         workflowId: workflow.id,
         orgId,
         userId: executeUserId,
-        campaignId: workflow.campaignId,
-        subrequestId: workflow.subrequestId,
+        campaignId: (body.inputs?.campaignId as string | undefined) ?? workflow.campaignId,
+        subrequestId: (body.inputs?.subrequestId as string | undefined) ?? workflow.subrequestId,
         runId: ownRunId,
         windmillJobId,
         windmillWorkspace: workflow.windmillWorkspace,

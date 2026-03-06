@@ -241,6 +241,50 @@ describe("POST /workflows/:id/execute", () => {
     expect(res.body.upgradedTo).toBe("wf-new-id");
   });
 
+  it("stores campaignId from inputs, not from workflow record", async () => {
+    mockWorkflows.push({
+      id: "wf-1",
+      orgId: "org-1",
+      name: "Test Flow",
+      campaignId: null,
+      subrequestId: null,
+      windmillFlowPath: "f/workflows/org_1/test_flow",
+      windmillWorkspace: "prod",
+      dag: VALID_LINEAR_DAG,
+    });
+
+    const res = await request
+      .post("/workflows/wf-1/execute")
+      .set(AUTH)
+      .send({ inputs: { campaignId: "camp-from-input", subrequestId: "sub-from-input" } });
+
+    expect(res.status).toBe(201);
+    expect(res.body.campaignId).toBe("camp-from-input");
+    expect(res.body.subrequestId).toBe("sub-from-input");
+  });
+
+  it("falls back to workflow record campaignId when not in inputs", async () => {
+    mockWorkflows.push({
+      id: "wf-1",
+      orgId: "org-1",
+      name: "Test Flow",
+      campaignId: "camp-from-wf",
+      subrequestId: "sub-from-wf",
+      windmillFlowPath: "f/workflows/org_1/test_flow",
+      windmillWorkspace: "prod",
+      dag: VALID_LINEAR_DAG,
+    });
+
+    const res = await request
+      .post("/workflows/wf-1/execute")
+      .set(AUTH)
+      .send({ inputs: { email: "test@example.com" } });
+
+    expect(res.status).toBe(201);
+    expect(res.body.campaignId).toBe("camp-from-wf");
+    expect(res.body.subrequestId).toBe("sub-from-wf");
+  });
+
   it("requires authentication", async () => {
     const res = await request
       .post("/workflows/wf-1/execute")
@@ -505,6 +549,39 @@ describe("POST /workflows/by-name/:name/execute", () => {
     expect(res.status).toBe(410);
     expect(res.body.error).toBe("Workflow has been deprecated");
     expect(res.body.upgradedTo).toBe("wf-missing");
+  });
+
+  it("stores campaignId from inputs when following upgrade chain", async () => {
+    mockSelectResponses.push(
+      [],  // 1. active-only lookup → not found
+      [{   // 2. any-status lookup → deprecated workflow (campaignId is null)
+        id: "wf-old",
+        name: "old-flow",
+        status: "deprecated",
+        campaignId: null,
+        subrequestId: null,
+        upgradedTo: "wf-new",
+      }],
+      [{   // 3. chain follow: replacement is active (campaignId also null)
+        id: "wf-new",
+        name: "new-flow",
+        status: "active",
+        campaignId: null,
+        subrequestId: null,
+        windmillFlowPath: "f/workflows/org_1/new_flow",
+        windmillWorkspace: "prod",
+        dag: VALID_LINEAR_DAG,
+      }],
+    );
+
+    const res = await request
+      .post("/workflows/by-name/old-flow/execute")
+      .set(AUTH)
+      .send({ inputs: { campaignId: "camp-runtime", subrequestId: "sub-runtime" } });
+
+    expect(res.status).toBe(201);
+    expect(res.body.campaignId).toBe("camp-runtime");
+    expect(res.body.subrequestId).toBe("sub-runtime");
   });
 
   it("requires authentication", async () => {
