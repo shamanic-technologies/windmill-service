@@ -121,6 +121,7 @@ router.post(
 router.post("/workflows/:id/execute", requireApiKey, async (req, res) => {
   try {
     const body = ExecuteWorkflowSchema.parse(req.body ?? {});
+    const orgId = res.locals.orgId as string;
 
     const [workflow] = await db
       .select()
@@ -147,7 +148,7 @@ router.post("/workflows/:id/execute", requireApiKey, async (req, res) => {
     try {
       const { runId: newRunId } = await createRun({
         parentRunId: callerRunId,
-        orgId: workflow.orgId,
+        orgId,
         userId: executeUserId,
       });
       ownRunId = newRunId;
@@ -162,7 +163,7 @@ router.post("/workflows/:id/execute", requireApiKey, async (req, res) => {
     const client = getWindmillClient();
     if (client) {
       try {
-        const flowInputs = { ...body.inputs, orgId: workflow.orgId, userId: executeUserId, runId: ownRunId, serviceEnvs: collectServiceEnvs() };
+        const flowInputs = { ...body.inputs, orgId, userId: executeUserId, runId: ownRunId, serviceEnvs: collectServiceEnvs() };
         windmillJobId = await client.runFlow(
           workflow.windmillFlowPath,
           flowInputs
@@ -181,7 +182,7 @@ router.post("/workflows/:id/execute", requireApiKey, async (req, res) => {
       .insert(workflowRuns)
       .values({
         workflowId: workflow.id,
-        orgId: workflow.orgId,
+        orgId,
         userId: executeUserId,
         campaignId: workflow.campaignId,
         subrequestId: workflow.subrequestId,

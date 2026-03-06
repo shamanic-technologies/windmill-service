@@ -45,7 +45,7 @@ function generateFlowPath(scope: string, name: string): string {
 router.post("/workflows/generate", requireApiKey, async (req, res) => {
   try {
     const body = GenerateWorkflowSchema.parse(req.body);
-    const orgId = body.orgId;
+    const orgId = res.locals.orgId as string;
     const userId = res.locals.userId as string;
     const runId = res.locals.runId as string;
     const identity = { orgId, userId, runId };
@@ -262,6 +262,7 @@ router.post("/workflows/generate", requireApiKey, async (req, res) => {
 router.post("/workflows", requireApiKey, async (req, res) => {
   try {
     const body = CreateWorkflowSchema.parse(req.body);
+    const orgId = res.locals.orgId as string;
     const dag = body.dag as DAG;
 
     // Validate the DAG
@@ -273,7 +274,7 @@ router.post("/workflows", requireApiKey, async (req, res) => {
 
     // Translate to OpenFlow
     const openFlow = dagToOpenFlow(dag, body.name);
-    const flowPath = generateFlowPath(body.orgId, body.name);
+    const flowPath = generateFlowPath(orgId, body.name);
 
     // Push to Windmill (if configured)
     const client = getWindmillClient();
@@ -296,7 +297,7 @@ router.post("/workflows", requireApiKey, async (req, res) => {
     const existingWorkflows = await db
       .select({ signatureName: workflows.signatureName })
       .from(workflows)
-      .where(eq(workflows.orgId, body.orgId));
+      .where(eq(workflows.orgId, orgId));
     const usedNames = new Set(existingWorkflows.map((w) => w.signatureName));
     const signatureName = pickSignatureName(signature, usedNames);
 
@@ -304,7 +305,7 @@ router.post("/workflows", requireApiKey, async (req, res) => {
     const [workflow] = await db
       .insert(workflows)
       .values({
-        orgId: body.orgId,
+        orgId,
         brandId: body.brandId,
         campaignId: body.campaignId,
         subrequestId: body.subrequestId,
@@ -336,7 +337,7 @@ router.post("/workflows", requireApiKey, async (req, res) => {
 router.put("/workflows/deploy", requireApiKey, async (req, res) => {
   try {
     const body = DeployWorkflowsSchema.parse(req.body);
-    const orgId = body.orgId;
+    const orgId = res.locals.orgId as string;
 
     // Validate ALL DAGs first — reject if any are invalid
     const dagErrors: { index: number; errors: unknown[] }[] = [];

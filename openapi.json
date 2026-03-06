@@ -285,7 +285,7 @@
           "orgId": {
             "type": "string",
             "minLength": 1,
-            "description": "Organization ID that owns this workflow."
+            "description": "Deprecated — use x-org-id header instead. Kept optional for backwards compatibility."
           },
           "brandId": {
             "type": "string",
@@ -329,7 +329,6 @@
           }
         },
         "required": [
-          "orgId",
           "name",
           "category",
           "channel",
@@ -699,7 +698,7 @@
           "orgId": {
             "type": "string",
             "minLength": 1,
-            "description": "Organization ID that owns these workflows. Workflows are scoped to (orgId + signature). This is idempotent — deploying the same DAG updates the existing workflow."
+            "description": "Deprecated — use x-org-id header instead. Kept optional for backwards compatibility."
           },
           "workflows": {
             "type": "array",
@@ -711,7 +710,6 @@
           }
         },
         "required": [
-          "orgId",
           "workflows"
         ]
       },
@@ -828,7 +826,7 @@
           "orgId": {
             "type": "string",
             "minLength": 1,
-            "description": "Organization ID. The generated workflow will be deployed under this orgId."
+            "description": "Deprecated — use x-org-id header instead. Kept optional for backwards compatibility."
           },
           "description": {
             "type": "string",
@@ -843,7 +841,6 @@
           }
         },
         "required": [
-          "orgId",
           "description"
         ]
       },

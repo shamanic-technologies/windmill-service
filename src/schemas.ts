@@ -108,7 +108,9 @@ export const WorkflowAudienceTypeSchema = z
 
 export const CreateWorkflowSchema = z
   .object({
-    orgId: z.string().min(1).describe("Organization ID that owns this workflow."),
+    orgId: z.string().min(1).optional().describe(
+      "Deprecated — use x-org-id header instead. Kept optional for backwards compatibility."
+    ),
     brandId: z.string().optional().describe("Optional brand ID for scoping."),
     campaignId: z.string().optional().describe("Optional campaign ID for scoping."),
     subrequestId: z.string().optional().describe("Optional subrequest ID for cost tracking."),
@@ -214,9 +216,8 @@ export const DeployWorkflowItemSchema = z
 
 export const DeployWorkflowsSchema = z
   .object({
-    orgId: z.string().min(1).describe(
-      "Organization ID that owns these workflows. Workflows are scoped to (orgId + signature). " +
-      "This is idempotent — deploying the same DAG updates the existing workflow."
+    orgId: z.string().min(1).optional().describe(
+      "Deprecated — use x-org-id header instead. Kept optional for backwards compatibility."
     ),
     workflows: z.array(DeployWorkflowItemSchema).min(1).describe("The workflows to deploy."),
   })
@@ -307,7 +308,9 @@ export const GenerateWorkflowHintsSchema = z
 
 export const GenerateWorkflowSchema = z
   .object({
-    orgId: z.string().min(1).describe("Organization ID. The generated workflow will be deployed under this orgId."),
+    orgId: z.string().min(1).optional().describe(
+      "Deprecated — use x-org-id header instead. Kept optional for backwards compatibility."
+    ),
     description: z.string().min(10).describe(
       "Natural language description of the desired workflow. Be specific about the steps, services, and data flow."
     ),

@@ -311,12 +311,12 @@ describe("PUT /workflows/deploy", () => {
     expect(wf.name).toBe(`sales-email-cold-outreach-${wf.signatureName}`);
   });
 
-  it("stores orgId from body in DB", async () => {
+  it("stores orgId from x-org-id header (not body) in DB", async () => {
     const res = await request
       .put("/workflows/deploy")
-      .set(AUTH)
+      .set(AUTH) // x-org-id: "org-1"
       .send({
-        orgId: "org_test_id",
+        orgId: "org_should_be_ignored",
         workflows: [
           {
             ...DEPLOY_ITEM,
@@ -328,7 +328,7 @@ describe("PUT /workflows/deploy", () => {
 
     expect(res.status).toBe(200);
     const inserted = mockDbRows[mockDbRows.length - 1];
-    expect(inserted.orgId).toBe("org_test_id");
+    expect(inserted.orgId).toBe("org-1"); // from header, not body
   });
 
   it("updates existing workflow when same DAG is redeployed (idempotent)", async () => {
