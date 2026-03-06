@@ -32,7 +32,9 @@ export async function checkApiRegistryHealth(): Promise<void> {
 
 /**
  * Validate all active workflows against the API Registry.
- * Deprecates workflows with broken endpoints and attempts LLM-powered upgrade.
+ * Attempts LLM-powered upgrade for broken workflows.
+ * Throws if any workflow has broken endpoints that cannot be fixed — the service
+ * should crash at startup rather than silently running with broken workflows.
  */
 export async function validateAndUpgradeWorkflows(
   deps: StartupValidatorDeps,
@@ -124,6 +126,12 @@ export async function validateAndUpgradeWorkflows(
   console.log(
     `[workflow-service] Validated ${activeWorkflows.length} workflows: ${validCount} valid, ${upgradedCount} upgraded, ${failedCount} failed`,
   );
+
+  if (failedCount > 0) {
+    throw new Error(
+      `[workflow-service] ${failedCount} workflow(s) have broken endpoints that could not be auto-upgraded. Fix the workflows or provide the platform Anthropic key, then restart.`,
+    );
+  }
 }
 
 async function attemptUpgrade(

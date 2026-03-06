@@ -61,15 +61,13 @@ if (process.env.NODE_ENV !== "test") {
         console.log("Windmill not configured (WINDMILL_SERVER_URL / WINDMILL_SERVER_API_KEY missing) — job poller disabled");
       }
 
+      // Validate workflows before accepting traffic — crash if broken and unfixable
+      if (process.env.API_REGISTRY_SERVICE_URL && process.env.API_REGISTRY_SERVICE_API_KEY) {
+        await validateAndUpgradeWorkflows({ db, windmillClient });
+      }
+
       app.listen(Number(PORT), "::", () => {
         console.log(`workflow-service running on port ${PORT}`);
-
-        // Run startup validation non-blocking (after server is accepting requests)
-        if (process.env.API_REGISTRY_SERVICE_URL && process.env.API_REGISTRY_SERVICE_API_KEY) {
-          validateAndUpgradeWorkflows({ db, windmillClient }).catch((err) => {
-            console.error("[workflow-service] Workflow validation failed:", err);
-          });
-        }
       });
     } catch (err) {
       console.error("Startup failed:", err);
