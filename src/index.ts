@@ -67,7 +67,7 @@ if (process.env.NODE_ENV !== "test") {
         // Run startup validation non-blocking (after server is accepting requests)
         if (process.env.API_REGISTRY_SERVICE_URL && process.env.API_REGISTRY_SERVICE_API_KEY) {
           validateAndUpgradeWorkflows({ db, windmillClient }).catch((err) => {
-            console.error("[startup] Workflow validation failed:", err);
+            console.error("[workflow-service] Workflow validation failed:", err);
           });
         }
       });

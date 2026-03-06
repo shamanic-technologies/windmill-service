@@ -16,7 +16,7 @@ export class JobPoller {
 
   start(): void {
     if (this.intervalId) return;
-    console.log(`[JobPoller] Starting (every ${this.pollIntervalMs}ms)`);
+    console.log(`[workflow-service] JobPoller starting (every ${this.pollIntervalMs}ms)`);
     this.intervalId = setInterval(() => this.poll(), this.pollIntervalMs);
   }
 
@@ -24,7 +24,7 @@ export class JobPoller {
     if (this.intervalId) {
       clearInterval(this.intervalId);
       this.intervalId = null;
-      console.log("[JobPoller] Stopped");
+      console.log("[workflow-service] JobPoller stopped");
     }
   }
 
@@ -54,12 +54,12 @@ export class JobPoller {
               .set({
                 status: newStatus,
                 result: success ? job.result : null,
-                error: success ? null : String(job.result ?? "Unknown error"),
+                error: success ? null : (typeof job.result === "string" ? job.result : JSON.stringify(job.result ?? "Unknown error")),
                 completedAt: new Date(),
               })
               .where(eq(table.id, run.id));
 
-            console.log(`[JobPoller] Run ${run.id} → ${newStatus}`);
+            console.log(`[workflow-service] JobPoller: run ${run.id} → ${newStatus}`);
           } else if (run.status === "queued") {
             await this.db
               .update(table)
@@ -71,13 +71,13 @@ export class JobPoller {
           }
         } catch (err) {
           console.error(
-            `[JobPoller] Error polling job ${run.windmillJobId}:`,
+            `[workflow-service] Error polling job ${run.windmillJobId}:`,
             err
           );
         }
       }
     } catch (err) {
-      console.error("[JobPoller] Error fetching active runs:", err);
+      console.error("[workflow-service] Error fetching active runs:", err);
     } finally {
       this.isPolling = false;
     }

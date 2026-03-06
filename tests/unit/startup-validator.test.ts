@@ -227,7 +227,7 @@ describe("validateAndUpgradeWorkflows", () => {
     consoleSpy.mockRestore();
   });
 
-  it("deprecates broken workflow when platform key not available", async () => {
+  it("keeps broken workflow active when platform key not available", async () => {
     dbSelectResult = [BROKEN_WORKFLOW];
     mockFetchSpecsForServices.mockResolvedValue(
       new Map([["campaign", CAMPAIGN_SPEC]]),
@@ -241,12 +241,14 @@ describe("validateAndUpgradeWorkflows", () => {
       windmillClient: null,
     });
 
-    // Should have called update to deprecate
-    expect(dbUpdates.length).toBeGreaterThan(0);
-    expect(dbUpdates[0].values).toMatchObject({
-      status: "deprecated",
-      upgradedTo: null,
-    });
+    // Should NOT deprecate — no DB updates to set status deprecated
+    const deprecations = dbUpdates.filter((u) => u.values.status === "deprecated");
+    expect(deprecations.length).toBe(0);
+
+    // Should warn about the broken endpoints
+    expect(consoleSpy).toHaveBeenCalledWith(
+      expect.stringContaining("keeping active"),
+    );
 
     consoleSpy.mockRestore();
   });
@@ -328,12 +330,12 @@ describe("validateAndUpgradeWorkflows", () => {
     });
 
     expect(consoleSpy).toHaveBeenCalledWith(
-      "[startup] No active workflows to validate",
+      "[workflow-service] No active workflows to validate",
     );
     consoleSpy.mockRestore();
   });
 
-  it("closes platform run as failed when upgrade throws", async () => {
+  it("closes platform run as failed when upgrade throws but keeps workflow active", async () => {
     dbSelectResult = [BROKEN_WORKFLOW];
     mockFetchSpecsForServices.mockResolvedValue(
       new Map([["campaign", CAMPAIGN_SPEC]]),
@@ -351,8 +353,8 @@ describe("validateAndUpgradeWorkflows", () => {
     // Should have closed the platform run as failed
     expect(mockClosePlatformRun).toHaveBeenCalledWith("platform-run-456", "failed");
 
-    // Should have deprecated the workflow
-    expect(dbUpdates.length).toBeGreaterThan(0);
-    expect(dbUpdates[0].values.status).toBe("deprecated");
+    // Should NOT deprecate the workflow — keep it active
+    const deprecations = dbUpdates.filter((u) => u.values.status === "deprecated");
+    expect(deprecations.length).toBe(0);
   });
 });

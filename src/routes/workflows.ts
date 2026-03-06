@@ -104,7 +104,7 @@ router.post("/workflows/generate", requireApiKey, async (req, res) => {
             schema: openFlow.schema,
           });
         } catch (err) {
-          console.error("[workflows] generate: failed to update Windmill flow:", err);
+          console.error("[workflow-service] generate: failed to update Windmill flow:", err);
         }
       }
 
@@ -186,7 +186,7 @@ router.post("/workflows/generate", requireApiKey, async (req, res) => {
             schema: openFlow.schema,
           });
         } catch (err) {
-          console.error("[workflows] generate: failed to create Windmill flow:", err);
+          console.error("[workflow-service] generate: failed to create Windmill flow:", err);
         }
       }
 
@@ -246,7 +246,7 @@ router.post("/workflows/generate", requireApiKey, async (req, res) => {
       return;
     }
     if (err instanceof Error && err.message.startsWith("key-service error:")) {
-      console.error("[workflows] generate: key-service error:", err.message);
+      console.error("[workflow-service] generate: key-service error:", err.message);
       res.status(502).json({ error: err.message });
       return;
     }
@@ -254,7 +254,7 @@ router.post("/workflows/generate", requireApiKey, async (req, res) => {
       res.status(502).json({ error: err.message });
       return;
     }
-    console.error("[workflows] GENERATE error:", err);
+    console.error("[workflow-service] GENERATE error:", err);
     res.status(500).json({
       error: err instanceof Error ? err.message : "Internal server error",
     });
@@ -291,7 +291,7 @@ router.post("/workflows", requireApiKey, async (req, res) => {
           schema: openFlow.schema,
         });
       } catch (err) {
-        console.error("[workflows] Failed to create flow in Windmill:", err);
+        console.error("[workflow-service] Failed to create flow in Windmill:", err);
       }
     }
 
@@ -333,7 +333,7 @@ router.post("/workflows", requireApiKey, async (req, res) => {
       res.status(400).json({ error: "Validation error", details: err });
       return;
     }
-    console.error("[workflows] POST error:", err);
+    console.error("[workflow-service] POST error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -396,7 +396,7 @@ router.put("/workflows/deploy", requireApiKey, async (req, res) => {
               schema: openFlow.schema,
             });
           } catch (err) {
-            console.error("[workflows] deploy: failed to update Windmill flow:", err);
+            console.error("[workflow-service] deploy: failed to update Windmill flow:", err);
           }
         }
 
@@ -447,7 +447,7 @@ router.put("/workflows/deploy", requireApiKey, async (req, res) => {
               schema: openFlow.schema,
             });
           } catch (err) {
-            console.error("[workflows] deploy: failed to create Windmill flow:", err);
+            console.error("[workflow-service] deploy: failed to create Windmill flow:", err);
           }
         }
 
@@ -491,7 +491,7 @@ router.put("/workflows/deploy", requireApiKey, async (req, res) => {
       res.status(400).json({ error: "Validation error", details: err });
       return;
     }
-    console.error("[workflows] PUT deploy error:", err);
+    console.error("[workflow-service] PUT deploy error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -644,11 +644,11 @@ router.get("/workflows/best", requireApiKey, async (req, res) => {
         err.message.includes("EMAIL_GATEWAY_SERVICE_URL") ||
         err.message.startsWith("email-gateway-service error:"))
     ) {
-      console.error("[workflows] best: external service error:", err.message);
+      console.error("[workflow-service] best: external service error:", err.message);
       res.status(502).json({ error: err.message });
       return;
     }
-    console.error("[workflows] GET best error:", err);
+    console.error("[workflow-service] GET best error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -696,7 +696,7 @@ router.get("/workflows", requireApiKey, async (req, res) => {
 
     res.json({ workflows: results.map(formatWorkflow) });
   } catch (err) {
-    console.error("[workflows] GET list error:", err);
+    console.error("[workflow-service] GET list error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -716,7 +716,7 @@ router.get("/workflows/:id", requireApiKey, async (req, res) => {
 
     res.json(formatWorkflow(workflow));
   } catch (err) {
-    console.error("[workflows] GET by id error:", err);
+    console.error("[workflow-service] GET by id error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -757,7 +757,7 @@ router.get("/workflows/:id/required-providers", requireApiKey, async (req, res) 
     });
   } catch (err) {
     if (err instanceof Error && err.message.startsWith("key-service error:")) {
-      console.error("[workflows] required-providers: key-service error:", err.message);
+      console.error("[workflow-service] required-providers: key-service error:", err.message);
       res.status(502).json({ error: err.message });
       return;
     }
@@ -765,7 +765,7 @@ router.get("/workflows/:id/required-providers", requireApiKey, async (req, res) 
       res.status(502).json({ error: err.message });
       return;
     }
-    console.error("[workflows] required-providers error:", err);
+    console.error("[workflow-service] required-providers error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -818,7 +818,7 @@ router.put("/workflows/:id", requireApiKey, async (req, res) => {
             });
           } catch (err) {
             console.error(
-              "[workflows] Failed to update flow in Windmill:",
+              "[workflow-service] Failed to update flow in Windmill:",
               err
             );
           }
@@ -838,7 +838,7 @@ router.put("/workflows/:id", requireApiKey, async (req, res) => {
       res.status(400).json({ error: "Validation error", details: err });
       return;
     }
-    console.error("[workflows] PUT error:", err);
+    console.error("[workflow-service] PUT error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -864,7 +864,7 @@ router.delete("/workflows/:id", requireApiKey, async (req, res) => {
           await client.deleteFlow(existing.windmillFlowPath);
         } catch (err) {
           console.error(
-            "[workflows] Failed to delete flow in Windmill:",
+            "[workflow-service] Failed to delete flow in Windmill:",
             err
           );
         }
@@ -877,7 +877,7 @@ router.delete("/workflows/:id", requireApiKey, async (req, res) => {
 
     res.json({ message: "Workflow deleted" });
   } catch (err) {
-    console.error("[workflows] DELETE error:", err);
+    console.error("[workflow-service] DELETE error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -898,7 +898,7 @@ router.post("/workflows/:id/validate", requireApiKey, async (req, res) => {
     const validation = validateDAG(workflow.dag as DAG);
     res.json(validation);
   } catch (err) {
-    console.error("[workflows] VALIDATE error:", err);
+    console.error("[workflow-service] VALIDATE error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });
