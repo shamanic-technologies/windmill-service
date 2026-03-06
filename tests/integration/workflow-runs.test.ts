@@ -162,10 +162,10 @@ describe("POST /workflows/:id/execute", () => {
     );
   });
 
-  it("stores userId in DB", async () => {
+  it("uses x-org-id header (not workflow.orgId) for run attribution", async () => {
     mockWorkflows.push({
       id: "wf-1",
-      orgId: "org-1",
+      orgId: "deployer-org-different",
       name: "Test Flow",
       windmillFlowPath: "f/workflows/org_1/test_flow",
       windmillWorkspace: "prod",
@@ -174,11 +174,18 @@ describe("POST /workflows/:id/execute", () => {
 
     const res = await request
       .post("/workflows/wf-1/execute")
-      .set(AUTH)
+      .set(AUTH) // x-org-id: "org-1"
       .send({ inputs: {} });
 
     expect(res.status).toBe(201);
+    expect(res.body.orgId).toBe("org-1"); // from header, not workflow.orgId
     expect(res.body.userId).toBe("user-1");
+
+    expect(mockCreateRun).toHaveBeenCalledWith({
+      parentRunId: "run-caller-1",
+      orgId: "org-1", // from header
+      userId: "user-1",
+    });
   });
 
   it("returns 502 when runs-service fails", async () => {
