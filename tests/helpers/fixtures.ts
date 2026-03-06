@@ -330,7 +330,7 @@ export const DAG_WITH_FLOW_INPUT_REFS: DAG = {
     {
       id: "start-run",
       type: "http.call",
-      config: { service: "campaign", method: "POST", path: "/internal/start-run" },
+      config: { service: "campaign", method: "POST", path: "/start-run" },
       inputMapping: {
         "body.campaignId": "$ref:flow_input.campaignId",
         "body.orgId": "$ref:flow_input.orgId",
@@ -346,7 +346,7 @@ export const DAG_WITH_CONFIG_RETRIES: DAG = {
     {
       id: "start-run",
       type: "http.call",
-      config: { service: "campaign", method: "POST", path: "/internal/start-run", retries: 0 },
+      config: { service: "campaign", method: "POST", path: "/start-run", retries: 0 },
       inputMapping: {
         "body.campaignId": "$ref:flow_input.campaignId",
         "body.orgId": "$ref:flow_input.orgId",
