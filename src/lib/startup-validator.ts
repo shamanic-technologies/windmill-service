@@ -73,6 +73,13 @@ export async function validateAndUpgradeWorkflows(
     const dag = wf.dag as DAG;
     const result = validateWorkflowEndpoints(dag, specs);
 
+    if (result.fieldIssues.length > 0) {
+      console.warn(
+        `[workflow-service] Workflow "${wf.name}" (${wf.id}) has ${result.fieldIssues.length} field issue(s):`,
+        result.fieldIssues.map((f) => `${f.severity}: ${f.reason}`).join("; "),
+      );
+    }
+
     if (result.valid) {
       validCount++;
       continue;

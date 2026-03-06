@@ -8,7 +8,10 @@ import {
 import {
   fetchLlmContext,
   fetchServiceSpec,
+  fetchSpecsForServices,
 } from "./api-registry-client.js";
+import { extractHttpEndpoints } from "./extract-http-endpoints.js";
+import { validateWorkflowEndpoints } from "./validate-workflow-endpoints.js";
 import type { IdentityHeaders } from "./key-service-client.js";
 
 export interface GenerateWorkflowInput {
@@ -140,6 +143,56 @@ export async function generateWorkflow(
       const validation = validateDAG(result.dag);
 
       if (validation.valid) {
+        // Also validate endpoint fields against API registry
+        const httpEndpoints = extractHttpEndpoints(result.dag);
+        if (httpEndpoints.length > 0) {
+          try {
+            const serviceNames = [...new Set(httpEndpoints.map((e) => e.service))];
+            const specs = await fetchSpecsForServices(serviceNames, identity);
+            const endpointResult = validateWorkflowEndpoints(result.dag, specs);
+
+            if (!endpointResult.valid) {
+              const fieldErrors = [
+                ...endpointResult.invalidEndpoints.map((e) => ({
+                  field: `${e.method} ${e.service}${e.path}`,
+                  message: e.reason,
+                })),
+                ...endpointResult.fieldIssues
+                  .filter((f) => f.severity === "error")
+                  .map((f) => ({
+                    field: `nodes[${f.nodeId}].${f.field}`,
+                    message: f.reason,
+                  })),
+              ];
+
+              dagRetries++;
+              if (dagRetries > MAX_RETRIES) {
+                throw new GenerationValidationError(
+                  "Generated DAG has invalid endpoint fields after retries",
+                  fieldErrors,
+                );
+              }
+
+              messages.push({ role: "assistant", content: response.content });
+              messages.push({
+                role: "user",
+                content: [
+                  {
+                    type: "tool_result",
+                    tool_use_id: createWorkflowCall.id,
+                    is_error: true,
+                    content: buildRetryUserMessage(input.description, fieldErrors),
+                  },
+                ],
+              });
+              continue;
+            }
+          } catch (err) {
+            if (err instanceof GenerationValidationError) throw err;
+            console.warn("[workflow-service] generate: field validation skipped:", err);
+          }
+        }
+
         return {
           dag: result.dag,
           category: result.category,

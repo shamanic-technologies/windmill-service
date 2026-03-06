@@ -20,6 +20,8 @@ import {
 import { computeDAGSignature } from "../lib/dag-signature.js";
 import { pickSignatureName } from "../lib/signature-words.js";
 import { extractHttpEndpoints } from "../lib/extract-http-endpoints.js";
+import { validateWorkflowEndpoints } from "../lib/validate-workflow-endpoints.js";
+import { fetchSpecsForServices } from "../lib/api-registry-client.js";
 import { fetchProviderRequirements, fetchAnthropicKey } from "../lib/key-service-client.js";
 import { fetchRunCosts, fetchEmailStats } from "../lib/stats-client.js";
 
@@ -380,6 +382,8 @@ router.put("/workflows/deploy", requireApiKey, async (req, res) => {
     const body = DeployWorkflowsSchema.parse(req.body);
     const orgId = res.locals.orgId as string;
 
+    console.log(`[workflow-service] deploy: org=${orgId} workflows=${body.workflows.length}`);
+
     // Validate ALL DAGs first — reject if any are invalid
     const dagErrors: { index: number; errors: unknown[] }[] = [];
     for (let i = 0; i < body.workflows.length; i++) {
@@ -391,6 +395,60 @@ router.put("/workflows/deploy", requireApiKey, async (req, res) => {
     if (dagErrors.length > 0) {
       res.status(400).json({ error: "Invalid DAGs", details: dagErrors });
       return;
+    }
+
+    // Validate endpoint fields against API registry (if configured)
+    if (process.env.API_REGISTRY_SERVICE_URL && process.env.API_REGISTRY_SERVICE_API_KEY) {
+      const allServiceNames = new Set<string>();
+      for (const wf of body.workflows) {
+        for (const ep of extractHttpEndpoints(wf.dag as DAG)) {
+          allServiceNames.add(ep.service);
+        }
+      }
+
+      if (allServiceNames.size > 0) {
+        try {
+          const specs = await fetchSpecsForServices([...allServiceNames]);
+          const validationErrors: Array<{ index: number; issues: unknown[] }> = [];
+
+          for (let i = 0; i < body.workflows.length; i++) {
+            const result = validateWorkflowEndpoints(body.workflows[i].dag as DAG, specs);
+
+            if (result.fieldIssues.length > 0) {
+              console.warn(
+                `[workflow-service] deploy: workflow[${i}] field issues:`,
+                result.fieldIssues.map((f) => `${f.severity}: ${f.reason}`).join("; "),
+              );
+            }
+
+            const errors = [
+              ...result.invalidEndpoints.map((e) => ({
+                severity: "error",
+                reason: e.reason,
+              })),
+              ...result.fieldIssues.filter((f) => f.severity === "error"),
+            ];
+
+            if (errors.length > 0) {
+              validationErrors.push({ index: i, issues: errors });
+            }
+          }
+
+          if (validationErrors.length > 0) {
+            console.error(
+              `[workflow-service] deploy: rejected — ${validationErrors.length} workflow(s) with field errors`,
+            );
+            res.status(400).json({
+              error: "Endpoint field validation failed",
+              details: validationErrors,
+            });
+            return;
+          }
+        } catch (err) {
+          console.warn("[workflow-service] deploy: api-registry validation skipped:", err);
+          // Don't block deploy if api-registry is unavailable
+        }
+      }
     }
 
     // Fetch all existing signatureNames for this orgId to avoid collisions
@@ -420,6 +478,9 @@ router.put("/workflows/deploy", requireApiKey, async (req, res) => {
 
       if (existing) {
         // Same DAG already deployed — update metadata
+        console.log(
+          `[workflow-service] deploy: sig=${signature.slice(0, 12)} matched "${existing.name}" (${existing.id}) -> update`,
+        );
         const openFlow = dagToOpenFlow(dag, existing.name);
         const client = getWindmillClient();
 
@@ -469,6 +530,9 @@ router.put("/workflows/deploy", requireApiKey, async (req, res) => {
         usedNames.add(signatureName);
 
         const name = `${wf.category}-${wf.channel}-${wf.audienceType}-${signatureName}`;
+        console.log(
+          `[workflow-service] deploy: sig=${signature.slice(0, 12)} no active match -> create "${name}"`,
+        );
 
         const openFlow = dagToOpenFlow(dag, name);
         const flowPath = generateFlowPath(orgId, name);
@@ -521,6 +585,12 @@ router.put("/workflows/deploy", requireApiKey, async (req, res) => {
         });
       }
     }
+
+    const createdCount = results.filter((r) => r.action === "created").length;
+    const updatedCount = results.filter((r) => r.action === "updated").length;
+    console.log(
+      `[workflow-service] deploy complete: org=${orgId} total=${results.length} created=${createdCount} updated=${updatedCount}`,
+    );
 
     res.json({ workflows: results });
   } catch (err: unknown) {
