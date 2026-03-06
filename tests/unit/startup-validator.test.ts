@@ -227,30 +227,24 @@ describe("validateAndUpgradeWorkflows", () => {
     consoleSpy.mockRestore();
   });
 
-  it("keeps broken workflow active when platform key not available", async () => {
+  it("throws when broken workflow cannot be upgraded (no platform key)", async () => {
     dbSelectResult = [BROKEN_WORKFLOW];
     mockFetchSpecsForServices.mockResolvedValue(
       new Map([["campaign", CAMPAIGN_SPEC]]),
     );
     mockFetchPlatformAnthropicKey.mockRejectedValue(new Error("key not found"));
 
-    const consoleSpy = vi.spyOn(console, "warn");
-
-    await validateAndUpgradeWorkflows({
-      db: createMockDb() as any,
-      windmillClient: null,
-    });
+    // Should throw to crash the service at startup
+    await expect(
+      validateAndUpgradeWorkflows({
+        db: createMockDb() as any,
+        windmillClient: null,
+      }),
+    ).rejects.toThrow("workflow(s) have broken endpoints that could not be auto-upgraded");
 
     // Should NOT deprecate — no DB updates to set status deprecated
     const deprecations = dbUpdates.filter((u) => u.values.status === "deprecated");
     expect(deprecations.length).toBe(0);
-
-    // Should warn about the broken endpoints
-    expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining("keeping active"),
-    );
-
-    consoleSpy.mockRestore();
   });
 
   it("upgrades broken workflow using platform key and tracks run", async () => {
@@ -335,7 +329,7 @@ describe("validateAndUpgradeWorkflows", () => {
     consoleSpy.mockRestore();
   });
 
-  it("closes platform run as failed when upgrade throws but keeps workflow active", async () => {
+  it("throws when upgrade fails (LLM error) and closes platform run as failed", async () => {
     dbSelectResult = [BROKEN_WORKFLOW];
     mockFetchSpecsForServices.mockResolvedValue(
       new Map([["campaign", CAMPAIGN_SPEC]]),
@@ -345,15 +339,18 @@ describe("validateAndUpgradeWorkflows", () => {
     mockClosePlatformRun.mockResolvedValue(undefined);
     mockUpgradeWorkflow.mockRejectedValue(new Error("LLM error"));
 
-    await validateAndUpgradeWorkflows({
-      db: createMockDb() as any,
-      windmillClient: null,
-    });
+    // Should throw to crash the service at startup
+    await expect(
+      validateAndUpgradeWorkflows({
+        db: createMockDb() as any,
+        windmillClient: null,
+      }),
+    ).rejects.toThrow("workflow(s) have broken endpoints that could not be auto-upgraded");
 
     // Should have closed the platform run as failed
     expect(mockClosePlatformRun).toHaveBeenCalledWith("platform-run-456", "failed");
 
-    // Should NOT deprecate the workflow — keep it active
+    // Should NOT deprecate the workflow
     const deprecations = dbUpdates.filter((u) => u.values.status === "deprecated");
     expect(deprecations.length).toBe(0);
   });
