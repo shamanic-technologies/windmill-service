@@ -29,7 +29,7 @@ router.post(
       const orgId = res.locals.orgId as string;
 
       // Look up workflow by name — only active workflows can be executed
-      const [workflow] = await db
+      let [workflow] = await db
         .select()
         .from(workflows)
         .where(
@@ -40,36 +40,60 @@ router.post(
         );
 
       if (!workflow) {
-        // Check if deprecated — return 410 with upgrade info instead of 404
+        // Check if deprecated — follow upgrade chain to find active replacement
         const [deprecated] = await db
           .select()
           .from(workflows)
           .where(eq(workflows.name, req.params.name));
 
         if (deprecated && deprecated.status === "deprecated") {
-          let upgradedToName: string | null = null;
-          if (deprecated.upgradedTo) {
-            const [replacement] = await db
+          // Follow upgrade chain to the latest active version
+          let currentId = deprecated.upgradedTo;
+          let depth = 0;
+          while (currentId && depth < 10) {
+            const [candidate] = await db
               .select()
               .from(workflows)
-              .where(eq(workflows.id, deprecated.upgradedTo));
-            upgradedToName = replacement?.name ?? null;
+              .where(eq(workflows.id, currentId));
+
+            if (!candidate) break;
+            if (candidate.status === "active") {
+              workflow = candidate;
+              console.log(
+                `[workflow-service] Execute by name: "${req.params.name}" is deprecated, following upgrade chain to "${candidate.name}" (${candidate.id})`,
+              );
+              break;
+            }
+            currentId = candidate.upgradedTo;
+            depth++;
           }
-          res.status(410).json({
-            error: "Workflow has been deprecated",
-            upgradedTo: deprecated.upgradedTo,
-            upgradedToName,
+
+          if (!workflow) {
+            // Dead end — no active workflow at the end of the chain
+            let upgradedToName: string | null = null;
+            if (deprecated.upgradedTo) {
+              const [replacement] = await db
+                .select()
+                .from(workflows)
+                .where(eq(workflows.id, deprecated.upgradedTo));
+              upgradedToName = replacement?.name ?? null;
+            }
+            res.status(410).json({
+              error: "Workflow has been deprecated",
+              upgradedTo: deprecated.upgradedTo,
+              upgradedToName,
+            });
+            return;
+          }
+        } else {
+          console.warn(
+            `[workflow-service] Execute by name: workflow "${req.params.name}" not found (no active workflow with this name)`,
+          );
+          res.status(404).json({
+            error: `Workflow "${req.params.name}" not found`,
           });
           return;
         }
-
-        console.warn(
-          `[workflow-service] Execute by name: workflow "${req.params.name}" not found (no active workflow with this name)`,
-        );
-        res.status(404).json({
-          error: `Workflow "${req.params.name}" not found`,
-        });
-        return;
       }
 
       if (!workflow.windmillFlowPath) {

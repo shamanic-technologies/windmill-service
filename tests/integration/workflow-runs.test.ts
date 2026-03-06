@@ -390,7 +390,7 @@ describe("POST /workflows/by-name/:name/execute", () => {
     expect(res.body.error).toContain("nonexistent");
   });
 
-  it("returns 410 when workflow is deprecated (with replacement info)", async () => {
+  it("follows upgrade chain and executes active replacement", async () => {
     mockSelectResponses.push(
       [],  // 1. active-only lookup → not found
       [{   // 2. any-status lookup → deprecated workflow
@@ -399,8 +399,13 @@ describe("POST /workflows/by-name/:name/execute", () => {
         status: "deprecated",
         upgradedTo: "wf-new",
       }],
-      [{   // 3. replacement name lookup
+      [{   // 3. chain follow: replacement is active → execute it
+        id: "wf-new",
         name: "replacement-flow",
+        status: "active",
+        windmillFlowPath: "f/workflows/org_1/replacement_flow",
+        windmillWorkspace: "prod",
+        dag: VALID_LINEAR_DAG,
       }],
     );
 
@@ -409,13 +414,53 @@ describe("POST /workflows/by-name/:name/execute", () => {
       .set(AUTH)
       .send({ inputs: {} });
 
-    expect(res.status).toBe(410);
-    expect(res.body.error).toBe("Workflow has been deprecated");
-    expect(res.body.upgradedTo).toBe("wf-new");
-    expect(res.body.upgradedToName).toBe("replacement-flow");
+    expect(res.status).toBe(201);
+    expect(res.body.status).toBe("queued");
+    expect(mockRunFlow).toHaveBeenCalledWith(
+      "f/workflows/org_1/replacement_flow",
+      expect.objectContaining({ orgId: "org-1" }),
+    );
   });
 
-  it("returns 410 with null upgradedTo when deprecated workflow has no replacement", async () => {
+  it("follows multi-hop upgrade chain to active version", async () => {
+    mockSelectResponses.push(
+      [],  // 1. active-only lookup → not found
+      [{   // 2. any-status lookup → deprecated v1
+        id: "wf-v1",
+        name: "old-flow",
+        status: "deprecated",
+        upgradedTo: "wf-v2",
+      }],
+      [{   // 3. chain hop 1: v2 is also deprecated
+        id: "wf-v2",
+        name: "mid-flow",
+        status: "deprecated",
+        upgradedTo: "wf-v3",
+      }],
+      [{   // 4. chain hop 2: v3 is active → execute it
+        id: "wf-v3",
+        name: "current-flow",
+        status: "active",
+        windmillFlowPath: "f/workflows/org_1/current_flow",
+        windmillWorkspace: "prod",
+        dag: VALID_LINEAR_DAG,
+      }],
+    );
+
+    const res = await request
+      .post("/workflows/by-name/old-flow/execute")
+      .set(AUTH)
+      .send({ inputs: { key: "value" } });
+
+    expect(res.status).toBe(201);
+    expect(res.body.status).toBe("queued");
+    expect(mockRunFlow).toHaveBeenCalledWith(
+      "f/workflows/org_1/current_flow",
+      expect.objectContaining({ orgId: "org-1", key: "value" }),
+    );
+  });
+
+  it("returns 410 when upgrade chain ends without active workflow", async () => {
     mockSelectResponses.push(
       [],  // 1. active-only lookup → not found
       [{   // 2. any-status lookup → deprecated, no replacement
@@ -435,6 +480,31 @@ describe("POST /workflows/by-name/:name/execute", () => {
     expect(res.body.error).toBe("Workflow has been deprecated");
     expect(res.body.upgradedTo).toBeNull();
     expect(res.body.upgradedToName).toBeNull();
+  });
+
+  it("returns 410 when upgrade chain points to missing workflow", async () => {
+    mockSelectResponses.push(
+      [],  // 1. active-only lookup → not found
+      [{   // 2. any-status lookup → deprecated with upgradedTo
+        id: "wf-old",
+        name: "orphan-flow",
+        status: "deprecated",
+        upgradedTo: "wf-missing",
+      }],
+      [],  // 3. chain follow: replacement not found → dead end
+      [{   // 4. 410 replacement name lookup → not found
+        // empty — replacement doesn't exist
+      }],
+    );
+
+    const res = await request
+      .post("/workflows/by-name/orphan-flow/execute")
+      .set(AUTH)
+      .send({ inputs: {} });
+
+    expect(res.status).toBe(410);
+    expect(res.body.error).toBe("Workflow has been deprecated");
+    expect(res.body.upgradedTo).toBe("wf-missing");
   });
 
   it("requires authentication", async () => {
