@@ -327,7 +327,7 @@ describe("POST /workflows/by-name/:name/execute", () => {
     expect(res.body.userId).toBe("user-b");
   });
 
-  it("does not require orgId in body (uses header instead)", async () => {
+  it("uses x-org-id header for identity (orgId not in body)", async () => {
     mockWorkflows.push({
       id: "wf-1",
       orgId: "deployer-org",

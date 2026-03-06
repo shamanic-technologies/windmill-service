@@ -88,7 +88,6 @@ describe("POST /workflows", () => {
       .post("/workflows")
       .set(AUTH)
       .send({
-        orgId: "org-1",
         name: "Test Flow",
         category: "sales",
         channel: "email",
@@ -113,7 +112,6 @@ describe("POST /workflows", () => {
       .post("/workflows")
       .set(AUTH)
       .send({
-        orgId: "org-1",
         name: "Multi-Channel Flow",
         category: "sales",
         channel: "email",
@@ -131,7 +129,6 @@ describe("POST /workflows", () => {
       .post("/workflows")
       .set(AUTH)
       .send({
-        orgId: "org-1",
         name: "Bad Flow",
         category: "sales",
         channel: "email",
@@ -149,7 +146,6 @@ describe("POST /workflows", () => {
       .post("/workflows")
       .set(IDENTITY)
       .send({
-        orgId: "org-1",
         name: "No Auth",
         dag: VALID_LINEAR_DAG,
       });
@@ -251,7 +247,6 @@ describe("PUT /workflows/deploy", () => {
       .put("/workflows/deploy")
       .set(AUTH)
       .send({
-        orgId: "org-deploy",
         workflows: [
           {
             ...DEPLOY_ITEM,
@@ -270,7 +265,6 @@ describe("PUT /workflows/deploy", () => {
       .put("/workflows/deploy")
       .set(AUTH)
       .send({
-        orgId: "org-deploy",
         workflows: [
           {
             ...DEPLOY_ITEM,
@@ -288,7 +282,6 @@ describe("PUT /workflows/deploy", () => {
       .put("/workflows/deploy")
       .set(AUTH)
       .send({
-        orgId: "org-deploy",
         workflows: [
           {
             ...DEPLOY_ITEM,
@@ -311,16 +304,15 @@ describe("PUT /workflows/deploy", () => {
     expect(wf.name).toBe(`sales-email-cold-outreach-${wf.signatureName}`);
   });
 
-  it("stores orgId from x-org-id header (not body) in DB", async () => {
+  it("stores orgId from x-org-id header in DB", async () => {
     const res = await request
       .put("/workflows/deploy")
       .set(AUTH) // x-org-id: "org-1"
       .send({
-        orgId: "org_should_be_ignored",
         workflows: [
           {
             ...DEPLOY_ITEM,
-            description: "Workflow with orgId",
+            description: "Workflow with header orgId",
             dag: DAG_WITH_TRANSACTIONAL_EMAIL_SEND,
           },
         ],
@@ -328,7 +320,7 @@ describe("PUT /workflows/deploy", () => {
 
     expect(res.status).toBe(200);
     const inserted = mockDbRows[mockDbRows.length - 1];
-    expect(inserted.orgId).toBe("org-1"); // from header, not body
+    expect(inserted.orgId).toBe("org-1"); // from header
   });
 
   it("updates existing workflow when same DAG is redeployed (idempotent)", async () => {
@@ -356,7 +348,6 @@ describe("PUT /workflows/deploy", () => {
       .put("/workflows/deploy")
       .set(AUTH)
       .send({
-        orgId: "org-deploy",
         workflows: [
           {
             ...DEPLOY_ITEM,
@@ -373,7 +364,6 @@ describe("PUT /workflows/deploy", () => {
 
   it("same DAG produces same signature across deploys", async () => {
     const payload = {
-      orgId: "org-deploy",
       workflows: [{ ...DEPLOY_ITEM, dag: DAG_WITH_TRANSACTIONAL_EMAIL_SEND }],
     };
 
@@ -394,7 +384,6 @@ describe("PUT /workflows/deploy", () => {
       .put("/workflows/deploy")
       .set(AUTH)
       .send({
-        orgId: "org-deploy",
         workflows: [{ ...DEPLOY_ITEM, dag: DAG_WITH_TRANSACTIONAL_EMAIL_SEND }],
       });
     expect(res1.body.workflows[0].signature).toBe(sig1);
@@ -405,7 +394,6 @@ describe("PUT /workflows/deploy", () => {
       .put("/workflows/deploy")
       .set(AUTH)
       .send({
-        orgId: "org-deploy",
         workflows: [{ ...DEPLOY_ITEM, dag: VALID_LINEAR_DAG }],
       });
     expect(res2.body.workflows[0].signature).toBe(sig2);
@@ -416,7 +404,6 @@ describe("PUT /workflows/deploy", () => {
       .put("/workflows/deploy")
       .set(AUTH)
       .send({
-        orgId: "org-deploy",
         workflows: [
           {
             // Missing category, channel, audienceType
@@ -433,7 +420,6 @@ describe("PUT /workflows/deploy", () => {
       .put("/workflows/deploy")
       .set(AUTH)
       .send({
-        orgId: "org-deploy",
         workflows: [
           {
             category: "sales",
@@ -452,7 +438,6 @@ describe("PUT /workflows/deploy", () => {
       .put("/workflows/deploy")
       .set(AUTH)
       .send({
-        orgId: "org-deploy",
         workflows: [
           {
             category: "sales",
@@ -471,7 +456,6 @@ describe("PUT /workflows/deploy", () => {
       .put("/workflows/deploy")
       .set(AUTH)
       .send({
-        orgId: "org-deploy",
         workflows: [
           {
             category: "invalid-category",
@@ -510,7 +494,6 @@ describe("PUT /workflows/deploy", () => {
       .put("/workflows/deploy")
       .set(AUTH)
       .send({
-        orgId: "org-deploy",
         workflows: [
           { ...DEPLOY_ITEM, dag: VALID_LINEAR_DAG },
           { ...DEPLOY_ITEM, dag: DAG_WITH_UNKNOWN_TYPE },
@@ -527,7 +510,6 @@ describe("PUT /workflows/deploy", () => {
       .put("/workflows/deploy")
       .set(IDENTITY)
       .send({
-        orgId: "org-deploy",
         workflows: [{ ...DEPLOY_ITEM, dag: VALID_LINEAR_DAG }],
       });
 
@@ -538,7 +520,7 @@ describe("PUT /workflows/deploy", () => {
     const res = await request
       .put("/workflows/deploy")
       .set(AUTH)
-      .send({ orgId: "org-deploy" }); // missing workflows
+      .send({}); // missing workflows
 
     expect(res.status).toBe(400);
   });

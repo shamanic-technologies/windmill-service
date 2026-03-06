@@ -108,9 +108,6 @@ export const WorkflowAudienceTypeSchema = z
 
 export const CreateWorkflowSchema = z
   .object({
-    orgId: z.string().min(1).optional().describe(
-      "Deprecated — use x-org-id header instead. Kept optional for backwards compatibility."
-    ),
     brandId: z.string().optional().describe("Optional brand ID for scoping."),
     campaignId: z.string().optional().describe("Optional campaign ID for scoping."),
     subrequestId: z.string().optional().describe("Optional subrequest ID for cost tracking."),
@@ -216,9 +213,6 @@ export const DeployWorkflowItemSchema = z
 
 export const DeployWorkflowsSchema = z
   .object({
-    orgId: z.string().min(1).optional().describe(
-      "Deprecated — use x-org-id header instead. Kept optional for backwards compatibility."
-    ),
     workflows: z.array(DeployWorkflowItemSchema).min(1).describe("The workflows to deploy."),
   })
   .openapi("DeployWorkflowsRequest");
@@ -247,10 +241,6 @@ export const DeployWorkflowsResponseSchema = z
 
 export const ExecuteByNameSchema = z
   .object({
-    orgId: z.string().min(1).optional().describe(
-      "Deprecated — ignored for workflow lookup. The executing org is identified via the x-org-id header. " +
-      "Kept optional for backwards compatibility."
-    ),
     inputs: z.record(z.unknown()).optional().describe(
       "Runtime inputs for the workflow. Accessible in nodes via $ref:flow_input.fieldName."
     ),
@@ -308,9 +298,6 @@ export const GenerateWorkflowHintsSchema = z
 
 export const GenerateWorkflowSchema = z
   .object({
-    orgId: z.string().min(1).optional().describe(
-      "Deprecated — use x-org-id header instead. Kept optional for backwards compatibility."
-    ),
     description: z.string().min(10).describe(
       "Natural language description of the desired workflow. Be specific about the steps, services, and data flow."
     ),
@@ -425,6 +412,14 @@ export const HealthResponseSchema = z
   })
   .openapi("HealthResponse");
 
+// --- Identity header parameters (required on all endpoints except /health and /openapi.json) ---
+
+const IdentityHeaders = z.object({
+  "x-org-id": z.string().describe("Internal org UUID (from client-service). Required."),
+  "x-user-id": z.string().describe("Internal user UUID (from client-service). Required."),
+  "x-run-id": z.string().describe("Run ID for tracing across services. Required."),
+});
+
 // --- Register Paths ---
 
 registry.registerPath({
@@ -447,6 +442,7 @@ registry.registerPath({
   tags: ["Workflows"],
   security: [{ apiKey: [] }],
   request: {
+    headers: IdentityHeaders,
     body: {
       required: true,
       content: { "application/json": { schema: CreateWorkflowSchema } },
@@ -471,6 +467,7 @@ registry.registerPath({
   tags: ["Workflows"],
   security: [{ apiKey: [] }],
   request: {
+    headers: IdentityHeaders,
     query: z.object({
       orgId: z.string().optional(),
       brandId: z.string().optional(),
@@ -501,6 +498,7 @@ registry.registerPath({
   tags: ["Workflows"],
   security: [{ apiKey: [] }],
   request: {
+    headers: IdentityHeaders,
     params: z.object({ id: z.string().uuid() }),
   },
   responses: {
@@ -526,6 +524,7 @@ registry.registerPath({
   tags: ["Workflows"],
   security: [{ apiKey: [] }],
   request: {
+    headers: IdentityHeaders,
     params: z.object({ id: z.string().uuid() }),
   },
   responses: {
@@ -553,6 +552,7 @@ registry.registerPath({
   tags: ["Workflows"],
   security: [{ apiKey: [] }],
   request: {
+    headers: IdentityHeaders,
     params: z.object({ id: z.string().uuid() }),
     body: {
       required: true,
@@ -578,6 +578,7 @@ registry.registerPath({
   tags: ["Workflows"],
   security: [{ apiKey: [] }],
   request: {
+    headers: IdentityHeaders,
     params: z.object({ id: z.string().uuid() }),
   },
   responses: {
@@ -599,6 +600,7 @@ registry.registerPath({
   tags: ["Workflows"],
   security: [{ apiKey: [] }],
   request: {
+    headers: IdentityHeaders,
     params: z.object({ id: z.string().uuid() }),
   },
   responses: {
@@ -616,6 +618,7 @@ registry.registerPath({
   tags: ["Workflow Runs"],
   security: [{ apiKey: [] }],
   request: {
+    headers: IdentityHeaders,
     params: z.object({ id: z.string().uuid() }),
     body: {
       required: false,
@@ -640,6 +643,7 @@ registry.registerPath({
   tags: ["Workflow Runs"],
   security: [{ apiKey: [] }],
   request: {
+    headers: IdentityHeaders,
     params: z.object({ id: z.string().uuid() }),
   },
   responses: {
@@ -676,6 +680,7 @@ registry.registerPath({
   tags: ["Workflow Runs"],
   security: [{ apiKey: [] }],
   request: {
+    headers: IdentityHeaders,
     params: z.object({ id: z.string().uuid() }),
   },
   responses: {
@@ -699,6 +704,7 @@ registry.registerPath({
   tags: ["Workflow Runs"],
   security: [{ apiKey: [] }],
   request: {
+    headers: IdentityHeaders,
     query: z.object({
       workflowId: z.string().uuid().optional(),
       orgId: z.string().optional(),
@@ -727,6 +733,7 @@ registry.registerPath({
   tags: ["Workflow Runs"],
   security: [{ apiKey: [] }],
   request: {
+    headers: IdentityHeaders,
     params: z.object({ id: z.string().uuid() }),
   },
   responses: {
@@ -751,6 +758,7 @@ registry.registerPath({
   tags: ["Workflows"],
   security: [{ apiKey: [] }],
   request: {
+    headers: IdentityHeaders,
     body: {
       required: true,
       content: { "application/json": { schema: DeployWorkflowsSchema } },
@@ -781,6 +789,7 @@ registry.registerPath({
   tags: ["Workflows"],
   security: [{ apiKey: [] }],
   request: {
+    headers: IdentityHeaders,
     body: {
       required: true,
       content: { "application/json": { schema: GenerateWorkflowSchema } },
@@ -813,6 +822,7 @@ registry.registerPath({
   tags: ["Workflows"],
   security: [{ apiKey: [] }],
   request: {
+    headers: IdentityHeaders,
     query: BestWorkflowQuerySchema,
   },
   responses: {
@@ -848,6 +858,7 @@ registry.registerPath({
   tags: ["Workflow Runs"],
   security: [{ apiKey: [] }],
   request: {
+    headers: IdentityHeaders,
     params: z.object({ name: z.string() }),
     body: {
       required: true,

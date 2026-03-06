@@ -110,7 +110,6 @@ describe("POST /workflows/generate", () => {
       .post("/workflows/generate")
       .set(AUTH)
       .send({
-        orgId: "org-1",
         description: "I want a cold email outreach workflow that finds leads and sends emails",
       });
 
@@ -144,7 +143,6 @@ describe("POST /workflows/generate", () => {
       .post("/workflows/generate")
       .set(AUTH)
       .send({
-        orgId: "org-1",
         description: "A workflow that does something impossible with bad types",
       });
 
@@ -158,7 +156,6 @@ describe("POST /workflows/generate", () => {
       .post("/workflows/generate")
       .set(IDENTITY)
       .send({
-        orgId: "org-1",
         description: "test workflow description here",
       });
 
@@ -169,7 +166,7 @@ describe("POST /workflows/generate", () => {
     const res = await request
       .post("/workflows/generate")
       .set(AUTH)
-      .send({ orgId: "org-1" });
+      .send({});
 
     expect(res.status).toBe(400);
   });
@@ -178,7 +175,7 @@ describe("POST /workflows/generate", () => {
     const res = await request
       .post("/workflows/generate")
       .set(AUTH)
-      .send({ orgId: "org-1", description: "hi" });
+      .send({ description: "hi" });
 
     expect(res.status).toBe(400);
   });
@@ -196,7 +193,6 @@ describe("POST /workflows/generate", () => {
       .post("/workflows/generate")
       .set(AUTH)
       .send({
-        orgId: "org-1",
         description: "Cold email outreach with lead search",
         hints: { services: ["lead", "email-gateway"] },
       });
@@ -218,7 +214,6 @@ describe("POST /workflows/generate", () => {
       .post("/workflows/generate")
       .set(AUTH)
       .send({
-        orgId: "org-1",
         description: "Some workflow description for testing errors",
       });
 
@@ -235,7 +230,6 @@ describe("POST /workflows/generate", () => {
       .post("/workflows/generate")
       .set(AUTH)
       .send({
-        orgId: "org-1",
         description: "Some workflow description for testing key-service errors",
       });
 
@@ -258,7 +252,6 @@ describe("POST /workflows/generate", () => {
       .post("/workflows/generate")
       .set(AUTH)
       .send({
-        orgId: "org-1",
         description: "Cold email outreach in the style of Alex Hormozi",
         style: { type: "human", humanId: "human-123", name: "Hormozi" },
       });
@@ -290,7 +283,6 @@ describe("POST /workflows/generate", () => {
       .post("/workflows/generate")
       .set(AUTH)
       .send({
-        orgId: "org-1",
         description: "Cold email outreach in my brand style with good copy",
         style: { type: "brand", brandId: "brand-456", name: "My Brand" },
       });
@@ -305,7 +297,6 @@ describe("POST /workflows/generate", () => {
       .post("/workflows/generate")
       .set(AUTH)
       .send({
-        orgId: "org-1",
         description: "Cold email outreach in expert style",
         style: { type: "human", name: "Hormozi" },
       });
@@ -318,7 +309,6 @@ describe("POST /workflows/generate", () => {
       .post("/workflows/generate")
       .set(AUTH)
       .send({
-        orgId: "org-1",
         description: "Cold email outreach in brand style long description",
         style: { type: "brand", name: "My Brand" },
       });
@@ -339,7 +329,6 @@ describe("POST /workflows/generate", () => {
       .post("/workflows/generate")
       .set(AUTH)
       .send({
-        orgId: "org-1",
         description: "Standard cold email outreach without any style preference",
       });
 
@@ -359,7 +348,6 @@ describe("POST /workflows/generate", () => {
       .post("/workflows/generate")
       .set(AUTH)
       .send({
-        orgId: "org-1",
         description: "Some workflow description for testing missing config",
       });
 
