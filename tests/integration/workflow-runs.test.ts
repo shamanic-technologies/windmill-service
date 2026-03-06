@@ -138,6 +138,8 @@ describe("POST /workflows/:id/execute", () => {
       parentRunId: "run-caller-1",
       orgId: "org-1",
       userId: "user-1",
+      taskName: "execute-workflow",
+      workflowName: "Test Flow",
     });
   });
 
@@ -185,6 +187,8 @@ describe("POST /workflows/:id/execute", () => {
       parentRunId: "run-caller-1",
       orgId: "org-1", // from header
       userId: "user-1",
+      taskName: "execute-workflow",
+      workflowName: "Test Flow",
     });
   });
 
@@ -272,6 +276,8 @@ describe("POST /workflows/by-name/:name/execute", () => {
       parentRunId: "run-caller-1",
       orgId: "org-1",
       userId: "user-1",
+      taskName: "execute-workflow",
+      workflowName: "create-user-flow",
     });
   });
 

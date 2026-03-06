@@ -22,16 +22,28 @@ export interface CreateRunResult {
  * @param opts.parentRunId - The caller's run ID (from x-run-id header)
  * @param opts.orgId - Organization ID
  * @param opts.userId - User ID
+ * @param opts.taskName - Name of the task being executed
+ * @param opts.workflowName - Optional workflow name for tracking
  * @returns The newly created run's ID
  */
 export async function createRun(opts: {
   parentRunId: string;
   orgId: string;
   userId: string;
+  taskName: string;
+  workflowName?: string;
 }): Promise<CreateRunResult> {
   const { baseUrl, apiKey } = getRunsServiceConfig();
 
-  const res = await fetch(`${baseUrl}/runs/start`, {
+  const body: Record<string, string> = {
+    serviceName: "workflow",
+    taskName: opts.taskName,
+  };
+  if (opts.workflowName) {
+    body.workflowName = opts.workflowName;
+  }
+
+  const res = await fetch(`${baseUrl}/v1/runs`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -40,21 +52,16 @@ export async function createRun(opts: {
       "x-user-id": opts.userId,
       "x-run-id": opts.parentRunId,
     },
-    body: JSON.stringify({
-      parentRunId: opts.parentRunId,
-      service: "workflow",
-      orgId: opts.orgId,
-      userId: opts.userId,
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!res.ok) {
     const text = await res.text().catch(() => "");
     throw new Error(
-      `runs-service error: POST /runs/start -> ${res.status} ${res.statusText}: ${text}`
+      `runs-service error: POST /v1/runs -> ${res.status} ${res.statusText}: ${text}`
     );
   }
 
-  const body = (await res.json()) as { runId: string };
-  return { runId: body.runId };
+  const data = (await res.json()) as { id: string };
+  return { runId: data.id };
 }
