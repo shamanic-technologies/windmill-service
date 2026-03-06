@@ -3,7 +3,6 @@ import { validateDAG, type DAG } from "./dag-validator.js";
 import {
   buildSystemPrompt,
   buildRetryUserMessage,
-  DAG_GENERATION_TOOL,
   AGENTIC_TOOLS,
 } from "./prompt-templates.js";
 import {
@@ -77,23 +76,21 @@ export async function generateWorkflow(
   anthropicApiKey: string,
   identity: IdentityHeaders,
 ): Promise<GenerateWorkflowResult> {
-  const client = overrideClient ?? new Anthropic({ apiKey: anthropicApiKey });
+  if (!process.env.API_REGISTRY_SERVICE_URL || !process.env.API_REGISTRY_SERVICE_API_KEY) {
+    throw new Error(
+      "API_REGISTRY_SERVICE_URL and API_REGISTRY_SERVICE_API_KEY must be set to generate workflows",
+    );
+  }
 
-  const agenticMode = Boolean(
-    process.env.API_REGISTRY_SERVICE_URL && process.env.API_REGISTRY_SERVICE_API_KEY,
-  );
+  const client = overrideClient ?? new Anthropic({ apiKey: anthropicApiKey });
 
   const styleDirective = input.style
     ? `This workflow MUST be created in the style of ${input.style.name}. Adopt their methodology, tone, and strategic patterns.`
     : undefined;
 
-  const systemPrompt = buildSystemPrompt({
-    filterServices: input.hints?.services,
-    agenticMode,
-    styleDirective,
-  });
+  const systemPrompt = buildSystemPrompt({ styleDirective });
 
-  const tools = agenticMode ? AGENTIC_TOOLS : [DAG_GENERATION_TOOL];
+  const tools = AGENTIC_TOOLS;
 
   let userMessage = input.description;
   if (input.hints?.services?.length) {
@@ -118,13 +115,11 @@ export async function generateWorkflow(
   for (let turn = 0; turn < MAX_AGENT_TURNS; turn++) {
     const response = await client.messages.create({
       model: MODEL,
-      max_tokens: agenticMode ? 16384 : 4096,
+      max_tokens: 16384,
       system: systemPrompt,
       messages,
       tools,
-      tool_choice: agenticMode
-        ? { type: "auto" as const }
-        : { type: "tool" as const, name: "create_workflow" },
+      tool_choice: { type: "auto" as const },
     });
 
     // Check if the response contains a create_workflow call

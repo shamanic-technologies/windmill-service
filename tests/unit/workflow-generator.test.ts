@@ -39,18 +39,12 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain('"cold-outreach"');
   });
 
-  it("includes service catalog in non-agentic mode", () => {
+  it("includes service discovery instructions", () => {
     const prompt = buildSystemPrompt();
-    expect(prompt).toContain("campaign");
-    expect(prompt).toContain("lead");
-    expect(prompt).toContain("content-generation");
-    expect(prompt).toContain("Available Services");
-  });
-
-  it("filters service catalog when filterServices is provided", () => {
-    const prompt = buildSystemPrompt({ filterServices: ["campaign", "lead"] });
-    expect(prompt).toContain("**campaign**");
-    expect(prompt).toContain("**lead**");
+    expect(prompt).toContain("Service Discovery (MANDATORY)");
+    expect(prompt).toContain("list_services");
+    expect(prompt).toContain("get_service_endpoints");
+    expect(prompt).not.toContain("Available Services");
   });
 
   it("includes example DAGs", () => {
@@ -96,20 +90,6 @@ describe("buildSystemPrompt", () => {
   it("does not include style directive when not provided", () => {
     const prompt = buildSystemPrompt();
     expect(prompt).not.toContain("Style Directive");
-  });
-
-  it("replaces static catalog with discovery instructions in agentic mode", () => {
-    const prompt = buildSystemPrompt({ agenticMode: true });
-    expect(prompt).toContain("Service Discovery (MANDATORY)");
-    expect(prompt).toContain("list_services");
-    expect(prompt).toContain("get_service_endpoints");
-    expect(prompt).not.toContain("Available Services");
-  });
-
-  it("does not include static catalog in agentic mode", () => {
-    const prompt = buildSystemPrompt({ agenticMode: true });
-    // The static catalog entries should not be present
-    expect(prompt).not.toContain("**campaign**: Campaign lifecycle");
   });
 });
 
@@ -214,7 +194,7 @@ const MOCK_SERVICE_SPEC = {
   },
 };
 
-describe("generateWorkflow (fallback mode — no api-registry)", () => {
+describe("generateWorkflow", () => {
   let mockCreate: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
@@ -222,13 +202,27 @@ describe("generateWorkflow (fallback mode — no api-registry)", () => {
     setAnthropicClient({
       messages: { create: mockCreate },
     } as unknown as Anthropic);
-    // Ensure agentic mode is off
-    delete process.env.API_REGISTRY_SERVICE_URL;
-    delete process.env.API_REGISTRY_SERVICE_API_KEY;
+    process.env.API_REGISTRY_SERVICE_URL = "http://fake-registry";
+    process.env.API_REGISTRY_SERVICE_API_KEY = "test-key";
+    mockFetchLlmContext.mockReset();
+    mockFetchServiceSpec.mockReset();
+    mockFetchLlmContext.mockResolvedValue(MOCK_LLM_CONTEXT);
+    mockFetchServiceSpec.mockResolvedValue(MOCK_SERVICE_SPEC);
   });
 
   afterEach(() => {
     setAnthropicClient(null);
+    delete process.env.API_REGISTRY_SERVICE_URL;
+    delete process.env.API_REGISTRY_SERVICE_API_KEY;
+  });
+
+  it("throws if API_REGISTRY env vars are missing", async () => {
+    delete process.env.API_REGISTRY_SERVICE_URL;
+    delete process.env.API_REGISTRY_SERVICE_API_KEY;
+
+    await expect(
+      generateWorkflow({ description: "test" }, TEST_API_KEY, TEST_IDENTITY),
+    ).rejects.toThrow("API_REGISTRY_SERVICE_URL and API_REGISTRY_SERVICE_API_KEY must be set");
   });
 
   it("returns valid DAG on first attempt", async () => {
@@ -325,7 +319,7 @@ describe("generateWorkflow (fallback mode — no api-registry)", () => {
     ).rejects.toThrow("LLM did not return a tool use response");
   });
 
-  it("includes system prompt with DAG schema", async () => {
+  it("includes system prompt with DAG schema and service discovery", async () => {
     mockCreate.mockResolvedValueOnce(createMockToolResponse(VALID_LINEAR_DAG));
 
     await generateWorkflow({ description: "test workflow" }, TEST_API_KEY, TEST_IDENTITY);
@@ -333,99 +327,11 @@ describe("generateWorkflow (fallback mode — no api-registry)", () => {
     const call = mockCreate.mock.calls[0][0];
     expect(call.system).toContain("DAG Format");
     expect(call.system).toContain("http.call");
+    expect(call.system).toContain("Service Discovery (MANDATORY)");
+    expect(call.system).not.toContain("Available Services");
   });
 
-  it("uses forced tool_choice in fallback mode", async () => {
-    mockCreate.mockResolvedValueOnce(createMockToolResponse(VALID_LINEAR_DAG));
-
-    await generateWorkflow({ description: "test workflow" }, TEST_API_KEY, TEST_IDENTITY);
-
-    const call = mockCreate.mock.calls[0][0];
-    expect(call.tool_choice).toEqual({ type: "tool", name: "create_workflow" });
-  });
-
-  it("includes style directive in system prompt when style is provided", async () => {
-    mockCreate.mockResolvedValueOnce(createMockToolResponse(VALID_LINEAR_DAG));
-
-    await generateWorkflow(
-      {
-        description: "Cold email outreach",
-        style: { type: "human", name: "Hormozi", humanId: "human-123" },
-      },
-      TEST_API_KEY,
-      TEST_IDENTITY,
-    );
-
-    const call = mockCreate.mock.calls[0][0];
-    expect(call.system).toContain("Style Directive");
-    expect(call.system).toContain("Hormozi");
-  });
-
-  it("appends style to user message when style is provided", async () => {
-    mockCreate.mockResolvedValueOnce(createMockToolResponse(VALID_LINEAR_DAG));
-
-    await generateWorkflow(
-      {
-        description: "Cold email outreach",
-        style: { type: "brand", name: "My Brand", brandId: "brand-456" },
-      },
-      TEST_API_KEY,
-      TEST_IDENTITY,
-    );
-
-    const call = mockCreate.mock.calls[0][0];
-    const userMsg = call.messages[0].content;
-    expect(userMsg).toContain('Style: Generate this workflow in the style of "My Brand"');
-  });
-
-  it("does not include style in prompt when style is not provided", async () => {
-    mockCreate.mockResolvedValueOnce(createMockToolResponse(VALID_LINEAR_DAG));
-
-    await generateWorkflow(
-      { description: "Cold email outreach" },
-      TEST_API_KEY,
-      TEST_IDENTITY,
-    );
-
-    const call = mockCreate.mock.calls[0][0];
-    expect(call.system).not.toContain("Style Directive");
-    expect(call.messages[0].content).not.toContain("Style:");
-  });
-
-  it("only provides create_workflow tool in fallback mode", async () => {
-    mockCreate.mockResolvedValueOnce(createMockToolResponse(VALID_LINEAR_DAG));
-
-    await generateWorkflow({ description: "test workflow" }, TEST_API_KEY, TEST_IDENTITY);
-
-    const call = mockCreate.mock.calls[0][0];
-    expect(call.tools).toHaveLength(1);
-    expect(call.tools[0].name).toBe("create_workflow");
-  });
-});
-
-describe("generateWorkflow (agentic mode — with api-registry)", () => {
-  let mockCreate: ReturnType<typeof vi.fn>;
-
-  beforeEach(() => {
-    mockCreate = vi.fn();
-    setAnthropicClient({
-      messages: { create: mockCreate },
-    } as unknown as Anthropic);
-    process.env.API_REGISTRY_SERVICE_URL = "http://fake-registry";
-    process.env.API_REGISTRY_SERVICE_API_KEY = "test-key";
-    mockFetchLlmContext.mockReset();
-    mockFetchServiceSpec.mockReset();
-    mockFetchLlmContext.mockResolvedValue(MOCK_LLM_CONTEXT);
-    mockFetchServiceSpec.mockResolvedValue(MOCK_SERVICE_SPEC);
-  });
-
-  afterEach(() => {
-    setAnthropicClient(null);
-    delete process.env.API_REGISTRY_SERVICE_URL;
-    delete process.env.API_REGISTRY_SERVICE_API_KEY;
-  });
-
-  it("uses auto tool_choice in agentic mode", async () => {
+  it("uses auto tool_choice", async () => {
     mockCreate.mockResolvedValueOnce(createMockToolResponse(VALID_LINEAR_DAG));
 
     await generateWorkflow({ description: "test workflow" }, TEST_API_KEY, TEST_IDENTITY);
@@ -434,7 +340,7 @@ describe("generateWorkflow (agentic mode — with api-registry)", () => {
     expect(call.tool_choice).toEqual({ type: "auto" });
   });
 
-  it("provides all three tools in agentic mode", async () => {
+  it("provides all three tools", async () => {
     mockCreate.mockResolvedValueOnce(createMockToolResponse(VALID_LINEAR_DAG));
 
     await generateWorkflow({ description: "test workflow" }, TEST_API_KEY, TEST_IDENTITY);
@@ -573,23 +479,60 @@ describe("generateWorkflow (agentic mode — with api-registry)", () => {
     expect(mockCreate).toHaveBeenCalledTimes(3);
   });
 
-  it("includes service discovery instructions in system prompt", async () => {
-    mockCreate.mockResolvedValueOnce(createMockToolResponse(VALID_LINEAR_DAG));
-
-    await generateWorkflow({ description: "test workflow" }, TEST_API_KEY, TEST_IDENTITY);
-
-    const call = mockCreate.mock.calls[0][0];
-    expect(call.system).toContain("Service Discovery (MANDATORY)");
-    expect(call.system).toContain("list_services");
-    expect(call.system).not.toContain("Available Services");
-  });
-
-  it("uses higher max_tokens in agentic mode", async () => {
+  it("uses 16384 max_tokens", async () => {
     mockCreate.mockResolvedValueOnce(createMockToolResponse(VALID_LINEAR_DAG));
 
     await generateWorkflow({ description: "test workflow" }, TEST_API_KEY, TEST_IDENTITY);
 
     const call = mockCreate.mock.calls[0][0];
     expect(call.max_tokens).toBe(16384);
+  });
+
+  it("includes style directive in system prompt when style is provided", async () => {
+    mockCreate.mockResolvedValueOnce(createMockToolResponse(VALID_LINEAR_DAG));
+
+    await generateWorkflow(
+      {
+        description: "Cold email outreach",
+        style: { type: "human", name: "Hormozi", humanId: "human-123" },
+      },
+      TEST_API_KEY,
+      TEST_IDENTITY,
+    );
+
+    const call = mockCreate.mock.calls[0][0];
+    expect(call.system).toContain("Style Directive");
+    expect(call.system).toContain("Hormozi");
+  });
+
+  it("appends style to user message when style is provided", async () => {
+    mockCreate.mockResolvedValueOnce(createMockToolResponse(VALID_LINEAR_DAG));
+
+    await generateWorkflow(
+      {
+        description: "Cold email outreach",
+        style: { type: "brand", name: "My Brand", brandId: "brand-456" },
+      },
+      TEST_API_KEY,
+      TEST_IDENTITY,
+    );
+
+    const call = mockCreate.mock.calls[0][0];
+    const userMsg = call.messages[0].content;
+    expect(userMsg).toContain('Style: Generate this workflow in the style of "My Brand"');
+  });
+
+  it("does not include style in prompt when style is not provided", async () => {
+    mockCreate.mockResolvedValueOnce(createMockToolResponse(VALID_LINEAR_DAG));
+
+    await generateWorkflow(
+      { description: "Cold email outreach" },
+      TEST_API_KEY,
+      TEST_IDENTITY,
+    );
+
+    const call = mockCreate.mock.calls[0][0];
+    expect(call.system).not.toContain("Style Directive");
+    expect(call.messages[0].content).not.toContain("Style:");
   });
 });

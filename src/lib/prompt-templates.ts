@@ -1,5 +1,4 @@
 import { NODE_TYPE_REGISTRY } from "./node-type-registry.js";
-import { getServiceCatalogForPrompt } from "./service-catalog.js";
 
 /**
  * Claude tool_use schema for structured DAG output.
@@ -109,13 +108,11 @@ export const AGENTIC_TOOLS = [
 ];
 
 export interface BuildSystemPromptOptions {
-  filterServices?: string[];
-  agenticMode?: boolean;
   styleDirective?: string;
 }
 
 export function buildSystemPrompt(options?: BuildSystemPromptOptions): string {
-  const { filterServices, agenticMode, styleDirective } = options ?? {};
+  const { styleDirective } = options ?? {};
 
   const nodeTypes = Object.entries(NODE_TYPE_REGISTRY)
     .map(([type, path]) => {
@@ -124,8 +121,7 @@ export function buildSystemPrompt(options?: BuildSystemPromptOptions): string {
     })
     .join("\n");
 
-  const serviceSection = agenticMode
-    ? `## Service Discovery (MANDATORY)
+  const serviceSection = `## Service Discovery (MANDATORY)
 
 You have access to a live API registry via tools. Before generating the workflow, you MUST:
 1. Call list_services to see all available microservices and their endpoints
@@ -133,10 +129,7 @@ You have access to a live API registry via tools. Before generating the workflow
 3. Only then call create_workflow with an informed DAG based on verified endpoint specs
 
 Do NOT guess endpoint paths or request body fields. ALWAYS verify with get_service_endpoints first.
-If a service or endpoint you need does not exist, do NOT invent it — adjust the workflow to use only real endpoints.`
-    : `## Available Services
-
-${getServiceCatalogForPrompt(filterServices)}`;
+If a service or endpoint you need does not exist, do NOT invent it — adjust the workflow to use only real endpoints.`;
 
   return `You are a workflow architect that generates valid DAG (Directed Acyclic Graph) workflows.
 
