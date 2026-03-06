@@ -65,3 +65,65 @@ export async function createRun(opts: {
   const data = (await res.json()) as { id: string };
   return { runId: data.id };
 }
+
+/** POST /v1/platform-runs — create a platform-level run (no org/user context) */
+export async function createPlatformRun(opts: {
+  serviceName: string;
+  taskName: string;
+  workflowName?: string;
+}): Promise<CreateRunResult> {
+  const { baseUrl, apiKey } = getRunsServiceConfig();
+
+  const body: Record<string, string> = {
+    serviceName: opts.serviceName,
+    taskName: opts.taskName,
+  };
+  if (opts.workflowName) {
+    body.workflowName = opts.workflowName;
+  }
+
+  const res = await fetch(`${baseUrl}/v1/platform-runs`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "x-service-name": "workflow-service",
+    },
+    body: JSON.stringify(body),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(
+      `runs-service error: POST /v1/platform-runs -> ${res.status} ${res.statusText}: ${text}`
+    );
+  }
+
+  const data = (await res.json()) as { id: string };
+  return { runId: data.id };
+}
+
+/** PATCH /v1/platform-runs/:id — close a platform-level run */
+export async function closePlatformRun(
+  runId: string,
+  status: "completed" | "failed",
+): Promise<void> {
+  const { baseUrl, apiKey } = getRunsServiceConfig();
+
+  const res = await fetch(`${baseUrl}/v1/platform-runs/${encodeURIComponent(runId)}`, {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": apiKey,
+      "x-service-name": "workflow-service",
+    },
+    body: JSON.stringify({ status }),
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(
+      `runs-service error: PATCH /v1/platform-runs/${runId} -> ${res.status} ${res.statusText}: ${text}`
+    );
+  }
+}

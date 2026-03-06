@@ -13,7 +13,8 @@ import { dagToOpenFlow } from "./dag-to-openflow.js";
 import { computeDAGSignature } from "./dag-signature.js";
 import { pickSignatureName } from "./signature-words.js";
 import type { WindmillClient } from "./windmill-client.js";
-import type { IdentityHeaders } from "./key-service-client.js";
+import { fetchPlatformAnthropicKey } from "./key-service-client.js";
+import { createPlatformRun, closePlatformRun } from "./runs-client.js";
 
 type Database = typeof DbInstance;
 
@@ -23,20 +24,10 @@ interface StartupValidatorDeps {
 }
 
 /**
- * Temporary identity for API Registry calls.
- * TODO: Remove once API Registry drops identity requirements on read-only spec endpoints.
- */
-const PLATFORM_IDENTITY: IdentityHeaders = {
-  orgId: "workflow-service",
-  userId: "workflow-service",
-  runId: "startup-validation",
-};
-
-/**
  * Ping API Registry to verify it's reachable. Throws on failure.
  */
 export async function checkApiRegistryHealth(): Promise<void> {
-  await fetchServiceList(PLATFORM_IDENTITY);
+  await fetchServiceList();
 }
 
 /**
@@ -68,11 +59,8 @@ export async function validateAndUpgradeWorkflows(
     }
   }
 
-  // 3. Fetch OpenAPI specs for all services
-  const specs = await fetchSpecsForServices(
-    [...allServiceNames],
-    PLATFORM_IDENTITY,
-  );
+  // 3. Fetch OpenAPI specs for all services (no identity needed for read-only endpoints)
+  const specs = await fetchSpecsForServices([...allServiceNames]);
 
   // 4. Validate each workflow
   let validCount = 0;
@@ -146,91 +134,133 @@ async function attemptUpgrade(
   database: Database,
   windmillClient: WindmillClient | null,
 ): Promise<string | null> {
-  // Resolve Anthropic API key — blocked until key-service supports platform-level key resolution
-  // TODO: Replace with platform key resolution once key-service adds GET /keys/platform/anthropic/decrypt
-  const anthropicApiKey = process.env.PLATFORM_ANTHROPIC_API_KEY;
-  if (!anthropicApiKey) {
-    console.warn("[startup] PLATFORM_ANTHROPIC_API_KEY not set — upgrade skipped");
+  // Resolve Anthropic API key via key-service platform endpoint
+  let anthropicApiKey: string;
+  try {
+    const keyResult = await fetchPlatformAnthropicKey();
+    anthropicApiKey = keyResult.key;
+  } catch (err) {
+    console.warn(
+      "[startup] Platform Anthropic key not available — upgrade skipped:",
+      err instanceof Error ? err.message : err,
+    );
     return null;
   }
 
-  const result = await upgradeWorkflow(
-    dag,
-    invalidEndpoints,
-    anthropicApiKey,
-    PLATFORM_IDENTITY,
-    {
-      category: wf.category,
-      channel: wf.channel,
-      audienceType: wf.audienceType,
-      description: wf.description ?? "",
-    },
-  );
-
-  // Compute new signature
-  const newSignature = computeDAGSignature(result.dag);
-
-  // Get used signature names to avoid collisions
-  const existingWorkflows = await database
-    .select({ signatureName: workflows.signatureName })
-    .from(workflows);
-  const usedNames = new Set<string>(existingWorkflows.map((w) => w.signatureName));
-
-  const newSignatureName = pickSignatureName(newSignature, usedNames);
-  const newName = `${result.category}-${result.channel}-${result.audienceType}-${newSignatureName}`;
-
-  // Deploy to Windmill
-  const openFlow = dagToOpenFlow(result.dag, newName);
-  const flowPath = `f/workflows/${wf.orgId}/${newName.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`;
-  let windmillFlowPath: string | null = null;
-
-  if (windmillClient) {
-    try {
-      await windmillClient.createFlow({
-        path: flowPath,
-        summary: newName,
-        description: result.description,
-        value: openFlow.value,
-        schema: openFlow.schema,
-      });
-      windmillFlowPath = flowPath;
-    } catch (err) {
-      console.error("[startup] Failed to create upgraded flow in Windmill:", err);
-    }
+  // Track this upgrade as a platform-level run
+  let platformRunId: string | undefined;
+  try {
+    const run = await createPlatformRun({
+      serviceName: "workflow",
+      taskName: "startup-upgrade",
+      workflowName: wf.name,
+    });
+    platformRunId = run.runId;
+  } catch (err) {
+    console.warn(
+      "[startup] Failed to create platform run — continuing without tracking:",
+      err instanceof Error ? err.message : err,
+    );
   }
 
-  // Insert new active workflow
-  const [created] = await database
-    .insert(workflows)
-    .values({
-      orgId: wf.orgId,
-      brandId: wf.brandId,
-      humanId: wf.humanId,
-      campaignId: wf.campaignId,
-      subrequestId: wf.subrequestId,
-      styleName: wf.styleName,
-      name: newName,
-      displayName: wf.displayName,
-      description: result.description,
-      category: result.category,
-      channel: result.channel,
-      audienceType: result.audienceType,
-      signature: newSignature,
-      signatureName: newSignatureName,
-      dag: result.dag,
-      tags: wf.tags as string[],
-      status: "active",
-      createdByUserId: "workflow-service",
-      createdByRunId: "startup-upgrade",
-      windmillFlowPath,
-      windmillWorkspace: wf.windmillWorkspace,
-    })
-    .returning();
+  try {
+    const result = await upgradeWorkflow(
+      dag,
+      invalidEndpoints,
+      anthropicApiKey,
+      undefined,
+      {
+        category: wf.category,
+        channel: wf.channel,
+        audienceType: wf.audienceType,
+        description: wf.description ?? "",
+      },
+    );
 
-  // Deprecate old workflow
-  await deprecateWorkflow(database, wf.id, created.id);
+    // Compute new signature
+    const newSignature = computeDAGSignature(result.dag);
 
-  return created.id;
+    // Get used signature names to avoid collisions
+    const existingWorkflows = await database
+      .select({ signatureName: workflows.signatureName })
+      .from(workflows);
+    const usedNames = new Set<string>(existingWorkflows.map((w) => w.signatureName));
+
+    const newSignatureName = pickSignatureName(newSignature, usedNames);
+    const newName = `${result.category}-${result.channel}-${result.audienceType}-${newSignatureName}`;
+
+    // Deploy to Windmill
+    const openFlow = dagToOpenFlow(result.dag, newName);
+    const flowPath = `f/workflows/${wf.orgId}/${newName.toLowerCase().replace(/[^a-z0-9]+/g, "_")}`;
+    let windmillFlowPath: string | null = null;
+
+    if (windmillClient) {
+      try {
+        await windmillClient.createFlow({
+          path: flowPath,
+          summary: newName,
+          description: result.description,
+          value: openFlow.value,
+          schema: openFlow.schema,
+        });
+        windmillFlowPath = flowPath;
+      } catch (err) {
+        console.error("[startup] Failed to create upgraded flow in Windmill:", err);
+      }
+    }
+
+    // Insert new active workflow
+    const [created] = await database
+      .insert(workflows)
+      .values({
+        orgId: wf.orgId,
+        brandId: wf.brandId,
+        humanId: wf.humanId,
+        campaignId: wf.campaignId,
+        subrequestId: wf.subrequestId,
+        styleName: wf.styleName,
+        name: newName,
+        displayName: wf.displayName,
+        description: result.description,
+        category: result.category,
+        channel: result.channel,
+        audienceType: result.audienceType,
+        signature: newSignature,
+        signatureName: newSignatureName,
+        dag: result.dag,
+        tags: wf.tags as string[],
+        status: "active",
+        createdByUserId: "workflow-service",
+        createdByRunId: platformRunId ?? "startup-upgrade",
+        windmillFlowPath,
+        windmillWorkspace: wf.windmillWorkspace,
+      })
+      .returning();
+
+    // Deprecate old workflow
+    await deprecateWorkflow(database, wf.id, created.id);
+
+    // Close platform run as completed
+    if (platformRunId) {
+      try {
+        await closePlatformRun(platformRunId, "completed");
+      } catch {
+        // Non-blocking
+      }
+    }
+
+    return created.id;
+  } catch (err) {
+    // Close platform run as failed
+    if (platformRunId) {
+      try {
+        await closePlatformRun(platformRunId, "failed");
+      } catch {
+        // Non-blocking
+      }
+    }
+    throw err;
+  }
 }
 
 async function deprecateWorkflow(
@@ -286,9 +316,7 @@ Warning: If an endpoint is actually valid but missing from the OpenAPI spec, upd
       headers: {
         "Content-Type": "application/json",
         "x-api-key": emailApiKey,
-        "x-org-id": wf.orgId,
-        "x-user-id": "workflow-service",
-        "x-run-id": "startup-upgrade",
+        "x-service-name": "workflow-service",
       },
       body: JSON.stringify({
         to: adminEmail,

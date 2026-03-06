@@ -17,6 +17,20 @@ vi.mock("../../src/lib/workflow-upgrader.js", () => ({
   upgradeWorkflow: (...args: unknown[]) => mockUpgradeWorkflow(...args),
 }));
 
+// Mock key-service client
+const mockFetchPlatformAnthropicKey = vi.fn();
+vi.mock("../../src/lib/key-service-client.js", () => ({
+  fetchPlatformAnthropicKey: (...args: unknown[]) => mockFetchPlatformAnthropicKey(...args),
+}));
+
+// Mock runs-client
+const mockCreatePlatformRun = vi.fn();
+const mockClosePlatformRun = vi.fn();
+vi.mock("../../src/lib/runs-client.js", () => ({
+  createPlatformRun: (...args: unknown[]) => mockCreatePlatformRun(...args),
+  closePlatformRun: (...args: unknown[]) => mockClosePlatformRun(...args),
+}));
+
 // Mock dag-to-openflow
 vi.mock("../../src/lib/dag-to-openflow.js", () => ({
   dagToOpenFlow: vi.fn().mockReturnValue({
@@ -36,9 +50,6 @@ vi.mock("../../src/lib/signature-words.js", () => ({
 }));
 
 // Mock DB
-const mockDbWorkflows: Record<string, unknown>[] = [];
-const mockInsertedWorkflows: Record<string, unknown>[] = [];
-
 vi.mock("../../src/db/index.js", () => ({
   db: "mock-db",
   sql: { end: () => Promise.resolve() },
@@ -58,6 +69,8 @@ describe("checkApiRegistryHealth", () => {
     mockFetchServiceList.mockResolvedValue([{ service: "campaign" }]);
     await expect(checkApiRegistryHealth()).resolves.toBeUndefined();
     expect(mockFetchServiceList).toHaveBeenCalledTimes(1);
+    // Should be called without identity
+    expect(mockFetchServiceList).toHaveBeenCalledWith();
   });
 
   it("throws when API Registry is unreachable", async () => {
@@ -185,10 +198,12 @@ describe("validateAndUpgradeWorkflows", () => {
   beforeEach(() => {
     mockFetchSpecsForServices.mockReset();
     mockUpgradeWorkflow.mockReset();
+    mockFetchPlatformAnthropicKey.mockReset();
+    mockCreatePlatformRun.mockReset();
+    mockClosePlatformRun.mockReset();
     dbSelectResult = [];
     dbUpdates = [];
     dbInserts = [];
-    delete process.env.PLATFORM_ANTHROPIC_API_KEY;
     delete process.env.TRANSACTIONAL_EMAIL_SERVICE_URL;
     delete process.env.ADMIN_NOTIFICATION_EMAIL;
   });
@@ -212,11 +227,12 @@ describe("validateAndUpgradeWorkflows", () => {
     consoleSpy.mockRestore();
   });
 
-  it("deprecates broken workflow when no Anthropic key available", async () => {
+  it("deprecates broken workflow when platform key not available", async () => {
     dbSelectResult = [BROKEN_WORKFLOW];
     mockFetchSpecsForServices.mockResolvedValue(
       new Map([["campaign", CAMPAIGN_SPEC]]),
     );
+    mockFetchPlatformAnthropicKey.mockRejectedValue(new Error("key not found"));
 
     const consoleSpy = vi.spyOn(console, "warn");
 
@@ -235,12 +251,14 @@ describe("validateAndUpgradeWorkflows", () => {
     consoleSpy.mockRestore();
   });
 
-  it("upgrades broken workflow when Anthropic key is available", async () => {
-    process.env.PLATFORM_ANTHROPIC_API_KEY = "test-key";
+  it("upgrades broken workflow using platform key and tracks run", async () => {
     dbSelectResult = [BROKEN_WORKFLOW];
     mockFetchSpecsForServices.mockResolvedValue(
       new Map([["campaign", CAMPAIGN_SPEC]]),
     );
+    mockFetchPlatformAnthropicKey.mockResolvedValue({ key: "test-platform-key", keySource: "platform" });
+    mockCreatePlatformRun.mockResolvedValue({ runId: "platform-run-123" });
+    mockClosePlatformRun.mockResolvedValue(undefined);
 
     const fixedDag = {
       nodes: [
@@ -266,15 +284,37 @@ describe("validateAndUpgradeWorkflows", () => {
       windmillClient: null,
     });
 
+    // Should have resolved the key via platform endpoint
+    expect(mockFetchPlatformAnthropicKey).toHaveBeenCalledTimes(1);
+
+    // Should have created a platform run
+    expect(mockCreatePlatformRun).toHaveBeenCalledWith({
+      serviceName: "workflow",
+      taskName: "startup-upgrade",
+      workflowName: "sales-email-cold-outreach-Broken",
+    });
+
+    // Should have called upgradeWorkflow with the platform key and no identity
+    expect(mockUpgradeWorkflow).toHaveBeenCalledWith(
+      BROKEN_WORKFLOW.dag,
+      expect.any(Array),
+      "test-platform-key",
+      undefined,
+      expect.objectContaining({ category: "sales" }),
+    );
+
     // Should have inserted a new workflow
     expect(dbInserts.length).toBe(1);
     expect(dbInserts[0].status).toBe("active");
     expect(dbInserts[0].createdByUserId).toBe("workflow-service");
-    expect(dbInserts[0].createdByRunId).toBe("startup-upgrade");
+    expect(dbInserts[0].createdByRunId).toBe("platform-run-123");
 
     // Should have deprecated the old workflow
     expect(dbUpdates.length).toBeGreaterThan(0);
     expect(dbUpdates[0].values.status).toBe("deprecated");
+
+    // Should have closed the platform run as completed
+    expect(mockClosePlatformRun).toHaveBeenCalledWith("platform-run-123", "completed");
   });
 
   it("handles empty workflow list gracefully", async () => {
@@ -291,5 +331,28 @@ describe("validateAndUpgradeWorkflows", () => {
       "[startup] No active workflows to validate",
     );
     consoleSpy.mockRestore();
+  });
+
+  it("closes platform run as failed when upgrade throws", async () => {
+    dbSelectResult = [BROKEN_WORKFLOW];
+    mockFetchSpecsForServices.mockResolvedValue(
+      new Map([["campaign", CAMPAIGN_SPEC]]),
+    );
+    mockFetchPlatformAnthropicKey.mockResolvedValue({ key: "test-key", keySource: "platform" });
+    mockCreatePlatformRun.mockResolvedValue({ runId: "platform-run-456" });
+    mockClosePlatformRun.mockResolvedValue(undefined);
+    mockUpgradeWorkflow.mockRejectedValue(new Error("LLM error"));
+
+    await validateAndUpgradeWorkflows({
+      db: createMockDb() as any,
+      windmillClient: null,
+    });
+
+    // Should have closed the platform run as failed
+    expect(mockClosePlatformRun).toHaveBeenCalledWith("platform-run-456", "failed");
+
+    // Should have deprecated the workflow
+    expect(dbUpdates.length).toBeGreaterThan(0);
+    expect(dbUpdates[0].values.status).toBe("deprecated");
   });
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { fetchProviderRequirements, fetchAnthropicKey, type IdentityHeaders } from "../../src/lib/key-service-client.js";
+import { fetchProviderRequirements, fetchAnthropicKey, fetchPlatformAnthropicKey, type IdentityHeaders } from "../../src/lib/key-service-client.js";
 
 const TEST_IDENTITY: IdentityHeaders = { orgId: "org-1", userId: "user-1", runId: "run-1" };
 
@@ -218,6 +218,70 @@ describe("fetchAnthropicKey", () => {
     expect(fetch).toHaveBeenCalledWith(
       "http://localhost:4000/keys/anthropic/decrypt?orgId=org+with+spaces&userId=user-1",
       expect.anything()
+    );
+  });
+});
+
+describe("fetchPlatformAnthropicKey", () => {
+  const originalUrl = process.env.KEY_SERVICE_URL;
+  const originalKey = process.env.KEY_SERVICE_API_KEY;
+
+  beforeEach(() => {
+    process.env.KEY_SERVICE_URL = "http://localhost:4000";
+    process.env.KEY_SERVICE_API_KEY = "test-key-svc-key";
+  });
+
+  afterEach(() => {
+    process.env.KEY_SERVICE_URL = originalUrl;
+    process.env.KEY_SERVICE_API_KEY = originalKey;
+    vi.restoreAllMocks();
+  });
+
+  it("calls GET /keys/platform/anthropic/decrypt with x-caller headers and no identity", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ key: "sk-platform-key", keySource: "platform" }),
+      })
+    );
+
+    const result = await fetchPlatformAnthropicKey();
+
+    expect(result).toEqual({ key: "sk-platform-key", keySource: "platform" });
+    expect(fetch).toHaveBeenCalledWith(
+      "http://localhost:4000/keys/platform/anthropic/decrypt",
+      expect.objectContaining({
+        method: "GET",
+        headers: {
+          "x-api-key": "test-key-svc-key",
+          "x-caller-service": "workflow",
+          "x-caller-method": "POST",
+          "x-caller-path": "/startup-upgrade",
+        },
+      })
+    );
+
+    // Should NOT include identity headers
+    const calledHeaders = (fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].headers;
+    expect(calledHeaders).not.toHaveProperty("x-org-id");
+    expect(calledHeaders).not.toHaveProperty("x-user-id");
+    expect(calledHeaders).not.toHaveProperty("x-run-id");
+  });
+
+  it("throws on non-2xx response", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: false,
+        status: 404,
+        statusText: "Not Found",
+        text: () => Promise.resolve("platform key not configured"),
+      })
+    );
+
+    await expect(fetchPlatformAnthropicKey()).rejects.toThrow(
+      "key-service error: GET /keys/platform/anthropic/decrypt"
     );
   });
 });

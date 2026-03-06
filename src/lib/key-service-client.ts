@@ -96,3 +96,27 @@ export async function fetchAnthropicKey(
   const body = (await res.json()) as KeyDecryptResponse;
   return body;
 }
+
+/** GET /keys/platform/anthropic/decrypt — platform-level key (no org/user context needed) */
+export async function fetchPlatformAnthropicKey(): Promise<KeyDecryptResponse> {
+  const { baseUrl, apiKey } = getKeyServiceConfig();
+
+  const res = await fetch(`${baseUrl}/keys/platform/anthropic/decrypt`, {
+    method: "GET",
+    headers: {
+      "x-api-key": apiKey,
+      "x-caller-service": "workflow",
+      "x-caller-method": "POST",
+      "x-caller-path": "/startup-upgrade",
+    },
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(
+      `key-service error: GET /keys/platform/anthropic/decrypt -> ${res.status} ${res.statusText}: ${text}`
+    );
+  }
+
+  return res.json() as Promise<KeyDecryptResponse>;
+}

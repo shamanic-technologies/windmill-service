@@ -26,7 +26,7 @@ export function setUpgradeAnthropicClient(client: Anthropic | null): void {
 async function resolveToolCall(
   toolName: string,
   toolInput: Record<string, unknown>,
-  identity: IdentityHeaders,
+  identity?: IdentityHeaders,
 ): Promise<{ content: string; isError?: boolean }> {
   switch (toolName) {
     case "list_services": {
@@ -61,7 +61,7 @@ export async function upgradeWorkflow(
   currentDag: DAG,
   invalidEndpoints: InvalidEndpoint[],
   anthropicApiKey: string,
-  identity: IdentityHeaders,
+  identity: IdentityHeaders | undefined,
   metadata: { category: string; channel: string; audienceType: string; description: string },
 ): Promise<UpgradeWorkflowResult> {
   const client = overrideClient ?? new Anthropic({ apiKey: anthropicApiKey });
