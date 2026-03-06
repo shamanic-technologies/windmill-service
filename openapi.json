@@ -951,7 +951,7 @@
           "orgId": {
             "type": "string",
             "minLength": 1,
-            "description": "Organization ID. Must match the orgId used during deploy."
+            "description": "Deprecated — ignored for workflow lookup. The executing org is identified via the x-org-id header. Kept optional for backwards compatibility."
           },
           "inputs": {
             "type": "object",
@@ -960,10 +960,7 @@
             },
             "description": "Runtime inputs for the workflow. Accessible in nodes via $ref:flow_input.fieldName."
           }
-        },
-        "required": [
-          "orgId"
-        ]
+        }
       }
     },
     "parameters": {}

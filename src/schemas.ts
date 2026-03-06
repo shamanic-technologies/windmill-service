@@ -246,7 +246,10 @@ export const DeployWorkflowsResponseSchema = z
 
 export const ExecuteByNameSchema = z
   .object({
-    orgId: z.string().min(1).describe("Organization ID. Must match the orgId used during deploy."),
+    orgId: z.string().min(1).optional().describe(
+      "Deprecated — ignored for workflow lookup. The executing org is identified via the x-org-id header. " +
+      "Kept optional for backwards compatibility."
+    ),
     inputs: z.record(z.unknown()).optional().describe(
       "Runtime inputs for the workflow. Accessible in nodes via $ref:flow_input.fieldName."
     ),

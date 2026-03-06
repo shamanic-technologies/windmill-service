@@ -26,21 +26,17 @@ router.post(
   async (req, res) => {
     try {
       const body = ExecuteByNameSchema.parse(req.body);
+      const orgId = res.locals.orgId as string;
 
-      // Look up workflow by (orgId + name)
+      // Look up workflow by name only — workflows are public resources
       const [workflow] = await db
         .select()
         .from(workflows)
-        .where(
-          and(
-            eq(workflows.orgId, body.orgId),
-            eq(workflows.name, req.params.name),
-          )
-        );
+        .where(eq(workflows.name, req.params.name));
 
       if (!workflow) {
         res.status(404).json({
-          error: `Workflow "${req.params.name}" not found for org "${body.orgId}"`,
+          error: `Workflow "${req.params.name}" not found`,
         });
         return;
       }
@@ -60,7 +56,7 @@ router.post(
       try {
         const { runId: newRunId } = await createRun({
           parentRunId: callerRunId,
-          orgId: body.orgId,
+          orgId,
           userId,
         });
         ownRunId = newRunId;
@@ -75,7 +71,7 @@ router.post(
       const client = getWindmillClient();
       if (client) {
         try {
-          const flowInputs = { ...body.inputs, orgId: body.orgId, userId, runId: ownRunId, serviceEnvs: collectServiceEnvs() };
+          const flowInputs = { ...body.inputs, orgId, userId, runId: ownRunId, serviceEnvs: collectServiceEnvs() };
           windmillJobId = await client.runFlow(
             workflow.windmillFlowPath,
             flowInputs
@@ -97,7 +93,7 @@ router.post(
         .insert(workflowRuns)
         .values({
           workflowId: workflow.id,
-          orgId: body.orgId,
+          orgId,
           userId,
           campaignId: workflow.campaignId,
           subrequestId: workflow.subrequestId,

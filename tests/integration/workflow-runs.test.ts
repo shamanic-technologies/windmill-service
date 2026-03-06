@@ -223,10 +223,10 @@ describe("POST /workflows/by-name/:name/execute", () => {
     mockCreateRun.mockResolvedValue({ runId: "run-own-456" });
   });
 
-  it("executes a workflow by orgId + name", async () => {
+  it("executes a workflow by name (name-only lookup, no org filter)", async () => {
     mockWorkflows.push({
       id: "wf-1",
-      orgId: "org-1",
+      orgId: "deployer-org",
       name: "newsletter-subscribe",
       windmillFlowPath: "f/workflows/org-1/newsletter_subscribe",
       windmillWorkspace: "prod",
@@ -236,7 +236,7 @@ describe("POST /workflows/by-name/:name/execute", () => {
     const res = await request
       .post("/workflows/by-name/newsletter-subscribe/execute")
       .set(AUTH)
-      .send({ orgId: "org-1", inputs: { email: "test@example.com" } });
+      .send({ inputs: { email: "test@example.com" } });
 
     expect(res.status).toBe(201);
     expect(res.body.status).toBe("queued");
@@ -245,10 +245,10 @@ describe("POST /workflows/by-name/:name/execute", () => {
     expect(mockRunFlow).toHaveBeenCalled();
   });
 
-  it("creates a child run in runs-service with caller's runId as parentRunId", async () => {
+  it("uses x-org-id header (not body orgId) for run attribution", async () => {
     mockWorkflows.push({
       id: "wf-1",
-      orgId: "org-1",
+      orgId: "deployer-org",
       name: "create-user-flow",
       windmillFlowPath: "f/workflows/org_1/create_user_flow",
       windmillWorkspace: "prod",
@@ -258,8 +258,9 @@ describe("POST /workflows/by-name/:name/execute", () => {
     await request
       .post("/workflows/by-name/create-user-flow/execute")
       .set(AUTH)
-      .send({ orgId: "org-1", inputs: {} });
+      .send({ inputs: {} });
 
+    // orgId in the run comes from header (org-1), not the deployer org
     expect(mockCreateRun).toHaveBeenCalledWith({
       parentRunId: "run-caller-1",
       orgId: "org-1",
@@ -267,10 +268,10 @@ describe("POST /workflows/by-name/:name/execute", () => {
     });
   });
 
-  it("forwards orgId, userId, and own runId into Windmill flow inputs", async () => {
+  it("forwards header orgId, userId, and own runId into Windmill flow inputs", async () => {
     mockWorkflows.push({
       id: "wf-1",
-      orgId: "org-1",
+      orgId: "deployer-org",
       name: "create-user-flow",
       windmillFlowPath: "f/workflows/org_1/create_user_flow",
       windmillWorkspace: "prod",
@@ -280,7 +281,7 @@ describe("POST /workflows/by-name/:name/execute", () => {
     await request
       .post("/workflows/by-name/create-user-flow/execute")
       .set(AUTH)
-      .send({ orgId: "org-1", inputs: { email: "user@test.com" } });
+      .send({ inputs: { email: "user@test.com" } });
 
     expect(mockRunFlow).toHaveBeenCalledWith(
       "f/workflows/org_1/create_user_flow",
@@ -288,10 +289,41 @@ describe("POST /workflows/by-name/:name/execute", () => {
     );
   });
 
-  it("stores userId in DB", async () => {
+  it("cross-org: workflow deployed by org-A can be executed by org-B", async () => {
+    // Workflow deployed by a completely different org
+    mockWorkflows.push({
+      id: "wf-cross",
+      orgId: "8c734aed-45ac-4780-a4ee-1fdcbbedeab1",
+      name: "sales-email-cold-outreach-pharaoh",
+      windmillFlowPath: "f/workflows/deployer/sales_email_cold_outreach_pharaoh",
+      windmillWorkspace: "prod",
+      dag: VALID_LINEAR_DAG,
+    });
+
+    // Execute with a different org in headers
+    const CROSS_ORG_AUTH = {
+      "x-api-key": "test-api-key",
+      "x-org-id": "b645207b-d8e9-40b0-9391-072b777cd9a9",
+      "x-user-id": "user-b",
+      "x-run-id": "run-caller-b",
+    };
+
+    const res = await request
+      .post("/workflows/by-name/sales-email-cold-outreach-pharaoh/execute")
+      .set(CROSS_ORG_AUTH)
+      .send({ inputs: { campaignId: "camp-1" } });
+
+    expect(res.status).toBe(201);
+    expect(res.body.status).toBe("queued");
+    // Run is attributed to the executing org, not the deployer
+    expect(res.body.orgId).toBe("b645207b-d8e9-40b0-9391-072b777cd9a9");
+    expect(res.body.userId).toBe("user-b");
+  });
+
+  it("does not require orgId in body (uses header instead)", async () => {
     mockWorkflows.push({
       id: "wf-1",
-      orgId: "org-1",
+      orgId: "deployer-org",
       name: "simple-flow",
       windmillFlowPath: "f/workflows/org_1/simple_flow",
       windmillWorkspace: "prod",
@@ -301,36 +333,28 @@ describe("POST /workflows/by-name/:name/execute", () => {
     const res = await request
       .post("/workflows/by-name/simple-flow/execute")
       .set(AUTH)
-      .send({ orgId: "org-1" });
+      .send({ inputs: {} }); // no orgId in body
 
     expect(res.status).toBe(201);
     expect(res.body.userId).toBe("user-1");
+    expect(res.body.orgId).toBe("org-1");
   });
 
   it("returns 404 for unknown workflow name", async () => {
     const res = await request
       .post("/workflows/by-name/nonexistent/execute")
       .set(AUTH)
-      .send({ orgId: "org-1" });
+      .send({});
 
     expect(res.status).toBe(404);
     expect(res.body.error).toContain("nonexistent");
-  });
-
-  it("requires orgId in body", async () => {
-    const res = await request
-      .post("/workflows/by-name/test-flow/execute")
-      .set(AUTH)
-      .send({ inputs: {} }); // missing orgId
-
-    expect(res.status).toBe(400);
   });
 
   it("requires authentication", async () => {
     const res = await request
       .post("/workflows/by-name/test-flow/execute")
       .set(IDENTITY)
-      .send({ orgId: "org-1" });
+      .send({});
 
     expect(res.status).toBe(401);
   });
