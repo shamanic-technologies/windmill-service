@@ -34,18 +34,23 @@ function getApiRegistryConfig(): { baseUrl: string; apiKey: string } {
   return { baseUrl: baseUrl.replace(/\/$/, ""), apiKey };
 }
 
+function buildHeaders(apiKey: string, identity?: IdentityHeaders): Record<string, string> {
+  const headers: Record<string, string> = { "x-api-key": apiKey };
+  if (identity) {
+    headers["x-org-id"] = identity.orgId;
+    headers["x-user-id"] = identity.userId;
+    headers["x-run-id"] = identity.runId;
+  }
+  return headers;
+}
+
 /** GET /llm-context — compact summary of all services and endpoints for LLM consumption */
-export async function fetchLlmContext(identity: IdentityHeaders): Promise<LlmContextResponse> {
+export async function fetchLlmContext(identity?: IdentityHeaders): Promise<LlmContextResponse> {
   const { baseUrl, apiKey } = getApiRegistryConfig();
 
   const res = await fetch(`${baseUrl}/llm-context`, {
     method: "GET",
-    headers: {
-      "x-api-key": apiKey,
-      "x-org-id": identity.orgId,
-      "x-user-id": identity.userId,
-      "x-run-id": identity.runId,
-    },
+    headers: buildHeaders(apiKey, identity),
   });
 
   if (!res.ok) {
@@ -60,18 +65,13 @@ export async function fetchLlmContext(identity: IdentityHeaders): Promise<LlmCon
 
 /** GET /services — list all registered services (used for health check + enumeration) */
 export async function fetchServiceList(
-  identity: IdentityHeaders,
+  identity?: IdentityHeaders,
 ): Promise<Array<{ service: string }>> {
   const { baseUrl, apiKey } = getApiRegistryConfig();
 
   const res = await fetch(`${baseUrl}/services`, {
     method: "GET",
-    headers: {
-      "x-api-key": apiKey,
-      "x-org-id": identity.orgId,
-      "x-user-id": identity.userId,
-      "x-run-id": identity.runId,
-    },
+    headers: buildHeaders(apiKey, identity),
   });
 
   if (!res.ok) {
@@ -87,7 +87,7 @@ export async function fetchServiceList(
 /** Fetch OpenAPI specs for multiple services (deduplicated). Returns Map<serviceName, spec> */
 export async function fetchSpecsForServices(
   serviceNames: string[],
-  identity: IdentityHeaders,
+  identity?: IdentityHeaders,
 ): Promise<Map<string, Record<string, unknown>>> {
   const unique = [...new Set(serviceNames)];
   const specs = new Map<string, Record<string, unknown>>();
@@ -113,7 +113,7 @@ export async function fetchSpecsForServices(
 /** GET /openapi/:service — full OpenAPI spec for one service */
 export async function fetchServiceSpec(
   serviceName: string,
-  identity: IdentityHeaders,
+  identity?: IdentityHeaders,
 ): Promise<Record<string, unknown>> {
   const { baseUrl, apiKey } = getApiRegistryConfig();
 
@@ -121,12 +121,7 @@ export async function fetchServiceSpec(
     `${baseUrl}/openapi/${encodeURIComponent(serviceName)}`,
     {
       method: "GET",
-      headers: {
-        "x-api-key": apiKey,
-        "x-org-id": identity.orgId,
-        "x-user-id": identity.userId,
-        "x-run-id": identity.runId,
-      },
+      headers: buildHeaders(apiKey, identity),
     },
   );
 

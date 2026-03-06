@@ -68,7 +68,7 @@ describe("upgradeWorkflow", () => {
     edges: [{ from: "gate-check", to: "end-run" }],
   };
 
-  const IDENTITY = { orgId: "test-org", userId: "test-user", runId: "test-run" };
+  const IDENTITY = undefined; // Platform-level upgrades don't pass identity
   const METADATA = {
     category: "sales",
     channel: "email",
