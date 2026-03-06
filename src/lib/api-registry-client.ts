@@ -58,6 +58,58 @@ export async function fetchLlmContext(identity: IdentityHeaders): Promise<LlmCon
   return res.json() as Promise<LlmContextResponse>;
 }
 
+/** GET /services — list all registered services (used for health check + enumeration) */
+export async function fetchServiceList(
+  identity: IdentityHeaders,
+): Promise<Array<{ service: string }>> {
+  const { baseUrl, apiKey } = getApiRegistryConfig();
+
+  const res = await fetch(`${baseUrl}/services`, {
+    method: "GET",
+    headers: {
+      "x-api-key": apiKey,
+      "x-org-id": identity.orgId,
+      "x-user-id": identity.userId,
+      "x-run-id": identity.runId,
+    },
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(
+      `api-registry error: GET /services -> ${res.status} ${res.statusText}: ${text}`
+    );
+  }
+
+  return res.json() as Promise<Array<{ service: string }>>;
+}
+
+/** Fetch OpenAPI specs for multiple services (deduplicated). Returns Map<serviceName, spec> */
+export async function fetchSpecsForServices(
+  serviceNames: string[],
+  identity: IdentityHeaders,
+): Promise<Map<string, Record<string, unknown>>> {
+  const unique = [...new Set(serviceNames)];
+  const specs = new Map<string, Record<string, unknown>>();
+
+  const results = await Promise.allSettled(
+    unique.map(async (name) => {
+      const spec = await fetchServiceSpec(name, identity);
+      return { name, spec };
+    }),
+  );
+
+  for (const result of results) {
+    if (result.status === "fulfilled") {
+      specs.set(result.value.name, result.value.spec);
+    } else {
+      console.warn(`[api-registry] Failed to fetch spec: ${result.reason}`);
+    }
+  }
+
+  return specs;
+}
+
 /** GET /openapi/:service — full OpenAPI spec for one service */
 export async function fetchServiceSpec(
   serviceName: string,

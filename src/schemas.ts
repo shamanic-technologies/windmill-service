@@ -151,6 +151,10 @@ export const WorkflowResponseSchema = z
     signature: z.string().describe("Deterministic SHA-256 hash of the canonical DAG JSON. Changes when any node, edge, or config changes."),
     signatureName: z.string().describe("Human-readable name for this signature (e.g. 'Sequoia'). Used to distinguish workflow variants within the same category/channel/audienceType."),
     dag: z.unknown().describe("The DAG definition as submitted."),
+    status: z.enum(["active", "deprecated"]).describe("Workflow lifecycle status. Only active workflows can be executed."),
+    upgradedTo: z.string().uuid().nullable().describe("If deprecated, the ID of the replacement workflow."),
+    createdByUserId: z.string().nullable().describe("User ID that created this workflow."),
+    createdByRunId: z.string().nullable().describe("Run ID that created this workflow."),
     windmillFlowPath: z.string().nullable().describe("Internal Windmill flow path (managed automatically)."),
     windmillWorkspace: z.string().describe("Windmill workspace (managed automatically)."),
     createdAt: z.string(),
@@ -477,6 +481,7 @@ registry.registerPath({
       channel: WorkflowChannelSchema.optional(),
       audienceType: WorkflowAudienceTypeSchema.optional(),
       tag: z.string().optional().describe("Filter workflows that contain this tag."),
+      status: z.string().optional().describe("Filter by status. Defaults to 'active'. Use 'all' to include deprecated workflows."),
     }),
   },
   responses: {

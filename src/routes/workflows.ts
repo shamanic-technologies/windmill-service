@@ -74,6 +74,7 @@ router.post("/workflows/generate", requireApiKey, async (req, res) => {
         and(
           eq(workflows.orgId, orgId),
           eq(workflows.signature, signature),
+          eq(workflows.status, "active"),
         )
       );
 
@@ -206,6 +207,8 @@ router.post("/workflows/generate", requireApiKey, async (req, res) => {
           humanId,
           brandId,
           styleName,
+          createdByUserId: userId,
+          createdByRunId: runId,
         })
         .returning();
 
@@ -319,6 +322,8 @@ router.post("/workflows", requireApiKey, async (req, res) => {
         signatureName,
         dag: body.dag,
         windmillFlowPath: flowPath,
+        createdByUserId: res.locals.userId as string,
+        createdByRunId: res.locals.runId as string,
       })
       .returning();
 
@@ -365,7 +370,7 @@ router.put("/workflows/deploy", requireApiKey, async (req, res) => {
       const dag = wf.dag as DAG;
       const signature = computeDAGSignature(wf.dag);
 
-      // Check if workflow already exists for this (orgId, signature)
+      // Check if workflow already exists for this (orgId, signature) — only active
       const [existing] = await db
         .select()
         .from(workflows)
@@ -373,6 +378,7 @@ router.put("/workflows/deploy", requireApiKey, async (req, res) => {
           and(
             eq(workflows.orgId, orgId),
             eq(workflows.signature, signature),
+            eq(workflows.status, "active"),
           )
         );
 
@@ -460,6 +466,8 @@ router.put("/workflows/deploy", requireApiKey, async (req, res) => {
             signatureName,
             dag: wf.dag,
             windmillFlowPath: flowPath,
+            createdByUserId: res.locals.userId as string,
+            createdByRunId: res.locals.runId as string,
           })
           .returning();
 
@@ -503,8 +511,8 @@ router.get("/workflows/best", requireApiKey, async (req, res) => {
       runId: res.locals.runId as string,
     };
 
-    // 1. Get all workflows matching the dimensions (all filters optional)
-    const conditions: ReturnType<typeof eq>[] = [];
+    // 1. Get all active workflows matching the dimensions (all filters optional)
+    const conditions: ReturnType<typeof eq>[] = [eq(workflows.status, "active")];
     if (orgId) conditions.push(eq(workflows.orgId, orgId));
     if (category) conditions.push(eq(workflows.category, category));
     if (channel) conditions.push(eq(workflows.channel, channel));
@@ -645,12 +653,17 @@ router.get("/workflows/best", requireApiKey, async (req, res) => {
   }
 });
 
-// GET /workflows — List workflows
+// GET /workflows — List workflows (defaults to active only; ?status=all for all)
 router.get("/workflows", requireApiKey, async (req, res) => {
   try {
-    const { orgId, brandId, humanId, campaignId, category, channel, audienceType, tag } = req.query;
+    const { orgId, brandId, humanId, campaignId, category, channel, audienceType, tag, status } = req.query;
 
     const conditions: ReturnType<typeof eq>[] = [];
+
+    // Default to active workflows unless ?status=all is passed
+    if (status !== "all") {
+      conditions.push(eq(workflows.status, typeof status === "string" ? status : "active"));
+    }
 
     if (orgId && typeof orgId === "string") {
       conditions.push(eq(workflows.orgId, orgId));

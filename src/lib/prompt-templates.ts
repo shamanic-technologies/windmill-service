@@ -309,6 +309,51 @@ Campaign service orchestrates workflow execution with budget constraints. Key co
 ${styleDirective ? `## Style Directive\n\n${styleDirective}\n\n` : ""}Generate a single workflow DAG that fulfills the user's description. Use the create_workflow tool to return the result.`;
 }
 
+export interface BuildUpgradeSystemPromptOptions {
+  currentDag: Record<string, unknown>;
+  invalidEndpoints: Array<{ service: string; method: string; path: string; reason: string }>;
+}
+
+export function buildUpgradeSystemPrompt(options: BuildUpgradeSystemPromptOptions): string {
+  const { currentDag, invalidEndpoints } = options;
+
+  const brokenList = invalidEndpoints
+    .map((ep) => `- ${ep.method} ${ep.service}${ep.path} — ${ep.reason}`)
+    .join("\n");
+
+  return `You are a workflow maintenance engineer. Your job is to FIX a broken workflow DAG by correcting invalid endpoint paths.
+
+## Current DAG (DO NOT change business logic)
+
+\`\`\`json
+${JSON.stringify(currentDag, null, 2)}
+\`\`\`
+
+## Broken Endpoints
+
+The following endpoints in this DAG are invalid — they no longer exist in the upstream service:
+
+${brokenList}
+
+## Your Task
+
+1. Call list_services to see all available services
+2. Call get_service_endpoints for EACH service that has a broken endpoint — find the correct path
+3. Call create_workflow with a corrected DAG
+
+## CRITICAL RULES
+
+- **Preserve ALL business logic exactly**: same node IDs, same edges, same conditions, same inputMapping, same retries, same onError
+- **Only change what's broken**: update config.path (and config.service or config.method if needed) on the affected nodes
+- **Do NOT add, remove, or reorder nodes or edges**
+- **Do NOT change inputMapping, conditions, stopAfterIf, skipIf, or any other config keys**
+- **Keep the same category, channel, audienceType, and description**
+- **Use the discovery tools to verify the correct endpoint exists before fixing**
+- If you cannot find a replacement endpoint, keep the original and note it in the description
+
+Return the corrected DAG via the create_workflow tool.`;
+}
+
 export function buildRetryUserMessage(
   originalDescription: string,
   validationErrors: Array<{ field: string; message: string }>,

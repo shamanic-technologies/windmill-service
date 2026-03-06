@@ -137,6 +137,30 @@
             "nullable": true,
             "description": "The DAG definition as submitted."
           },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "deprecated"
+            ],
+            "description": "Workflow lifecycle status. Only active workflows can be executed."
+          },
+          "upgradedTo": {
+            "type": "string",
+            "nullable": true,
+            "format": "uuid",
+            "description": "If deprecated, the ID of the replacement workflow."
+          },
+          "createdByUserId": {
+            "type": "string",
+            "nullable": true,
+            "description": "User ID that created this workflow."
+          },
+          "createdByRunId": {
+            "type": "string",
+            "nullable": true,
+            "description": "Run ID that created this workflow."
+          },
           "windmillFlowPath": {
             "type": "string",
             "nullable": true,
@@ -170,6 +194,10 @@
           "tags",
           "signature",
           "signatureName",
+          "status",
+          "upgradedTo",
+          "createdByUserId",
+          "createdByRunId",
           "windmillFlowPath",
           "windmillWorkspace",
           "createdAt",
@@ -1117,6 +1145,16 @@
             "required": false,
             "description": "Filter workflows that contain this tag.",
             "name": "tag",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Filter by status. Defaults to 'active'. Use 'all' to include deprecated workflows."
+            },
+            "required": false,
+            "description": "Filter by status. Defaults to 'active'. Use 'all' to include deprecated workflows.",
+            "name": "status",
             "in": "query"
           },
           {

@@ -28,11 +28,16 @@ router.post(
       const body = ExecuteByNameSchema.parse(req.body);
       const orgId = res.locals.orgId as string;
 
-      // Look up workflow by name only — workflows are public resources
+      // Look up workflow by name — only active workflows can be executed
       const [workflow] = await db
         .select()
         .from(workflows)
-        .where(eq(workflows.name, req.params.name));
+        .where(
+          and(
+            eq(workflows.name, req.params.name),
+            eq(workflows.status, "active"),
+          )
+        );
 
       if (!workflow) {
         res.status(404).json({
@@ -128,7 +133,12 @@ router.post("/workflows/:id/execute", requireApiKey, async (req, res) => {
     const [workflow] = await db
       .select()
       .from(workflows)
-      .where(eq(workflows.id, req.params.id));
+      .where(
+        and(
+          eq(workflows.id, req.params.id),
+          eq(workflows.status, "active"),
+        )
+      );
 
     if (!workflow) {
       res.status(404).json({ error: "Workflow not found" });

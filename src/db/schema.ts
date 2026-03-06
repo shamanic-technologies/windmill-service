@@ -28,6 +28,10 @@ export const workflows = pgTable(
     signatureName: text("signature_name").notNull(),
     dag: jsonb("dag").notNull(),
     tags: jsonb("tags").default([]),
+    status: text("status").notNull().default("active"),
+    upgradedTo: uuid("upgraded_to"),
+    createdByUserId: text("created_by_user_id"),
+    createdByRunId: text("created_by_run_id"),
     windmillFlowPath: text("windmill_flow_path"),
     windmillWorkspace: text("windmill_workspace").notNull().default("prod"),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
@@ -36,12 +40,6 @@ export const workflows = pgTable(
   (table) => [
     index("idx_workflows_org").on(table.orgId),
     index("idx_workflows_campaign").on(table.campaignId),
-    uniqueIndex("idx_workflows_org_name_unique")
-      .on(table.orgId, table.name),
-    uniqueIndex("idx_workflows_org_signature_unique")
-      .on(table.orgId, table.signature),
-    uniqueIndex("idx_workflows_org_signature_name_unique")
-      .on(table.orgId, table.signatureName),
     index("idx_workflows_org_style").on(table.orgId, table.styleName),
   ]
 );
