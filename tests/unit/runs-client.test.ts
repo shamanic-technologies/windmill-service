@@ -16,12 +16,12 @@ describe("createRun", () => {
     vi.restoreAllMocks();
   });
 
-  it("calls POST /runs/start with parentRunId, orgId, userId", async () => {
+  it("calls POST /v1/runs with serviceName + taskName in body and identity in headers", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({
         ok: true,
-        json: () => Promise.resolve({ runId: "new-run-123" }),
+        json: () => Promise.resolve({ id: "new-run-123" }),
       })
     );
 
@@ -29,11 +29,12 @@ describe("createRun", () => {
       parentRunId: "caller-run-1",
       orgId: "org-1",
       userId: "user-1",
+      taskName: "execute-workflow",
     });
 
     expect(result).toEqual({ runId: "new-run-123" });
     expect(fetch).toHaveBeenCalledWith(
-      "http://localhost:5000/runs/start",
+      "http://localhost:5000/v1/runs",
       expect.objectContaining({
         method: "POST",
         headers: expect.objectContaining({
@@ -44,13 +45,63 @@ describe("createRun", () => {
           "x-run-id": "caller-run-1",
         }),
         body: JSON.stringify({
-          parentRunId: "caller-run-1",
-          service: "workflow",
-          orgId: "org-1",
-          userId: "user-1",
+          serviceName: "workflow",
+          taskName: "execute-workflow",
         }),
       })
     );
+  });
+
+  it("includes workflowName in body when provided", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ id: "new-run-789" }),
+      })
+    );
+
+    await createRun({
+      parentRunId: "caller-run-1",
+      orgId: "org-1",
+      userId: "user-1",
+      taskName: "execute-workflow",
+      workflowName: "sales-email-cold-outreach",
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      "http://localhost:5000/v1/runs",
+      expect.objectContaining({
+        body: JSON.stringify({
+          serviceName: "workflow",
+          taskName: "execute-workflow",
+          workflowName: "sales-email-cold-outreach",
+        }),
+      })
+    );
+  });
+
+  it("does not send orgId, userId, or parentRunId in request body", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ id: "new-run-456" }),
+      })
+    );
+
+    await createRun({
+      parentRunId: "caller-run-1",
+      orgId: "org-1",
+      userId: "user-1",
+      taskName: "execute-workflow",
+    });
+
+    const callArgs = (fetch as ReturnType<typeof vi.fn>).mock.calls[0];
+    const sentBody = JSON.parse(callArgs[1].body);
+    expect(sentBody).not.toHaveProperty("orgId");
+    expect(sentBody).not.toHaveProperty("userId");
+    expect(sentBody).not.toHaveProperty("parentRunId");
   });
 
   it("strips trailing slash from RUNS_SERVICE_URL", async () => {
@@ -60,7 +111,7 @@ describe("createRun", () => {
       "fetch",
       vi.fn().mockResolvedValue({
         ok: true,
-        json: () => Promise.resolve({ runId: "new-run-456" }),
+        json: () => Promise.resolve({ id: "new-run-456" }),
       })
     );
 
@@ -68,10 +119,11 @@ describe("createRun", () => {
       parentRunId: "caller-run-2",
       orgId: "org-1",
       userId: "user-1",
+      taskName: "execute-workflow",
     });
 
     expect(fetch).toHaveBeenCalledWith(
-      "http://localhost:5000/runs/start",
+      "http://localhost:5000/v1/runs",
       expect.anything()
     );
   });
@@ -88,7 +140,7 @@ describe("createRun", () => {
     );
 
     await expect(
-      createRun({ parentRunId: "caller-run-3", orgId: "org-1", userId: "user-1" })
+      createRun({ parentRunId: "caller-run-3", orgId: "org-1", userId: "user-1", taskName: "execute-workflow" })
     ).rejects.toThrow("runs-service error:");
   });
 
@@ -96,7 +148,7 @@ describe("createRun", () => {
     delete process.env.RUNS_SERVICE_URL;
 
     await expect(
-      createRun({ parentRunId: "caller-run-4", orgId: "org-1", userId: "user-1" })
+      createRun({ parentRunId: "caller-run-4", orgId: "org-1", userId: "user-1", taskName: "execute-workflow" })
     ).rejects.toThrow("RUNS_SERVICE_URL and RUNS_SERVICE_API_KEY must be set");
   });
 
@@ -104,7 +156,7 @@ describe("createRun", () => {
     delete process.env.RUNS_SERVICE_API_KEY;
 
     await expect(
-      createRun({ parentRunId: "caller-run-5", orgId: "org-1", userId: "user-1" })
+      createRun({ parentRunId: "caller-run-5", orgId: "org-1", userId: "user-1", taskName: "execute-workflow" })
     ).rejects.toThrow("RUNS_SERVICE_URL and RUNS_SERVICE_API_KEY must be set");
   });
 });

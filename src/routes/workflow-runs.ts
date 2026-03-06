@@ -58,6 +58,8 @@ router.post(
           parentRunId: callerRunId,
           orgId,
           userId,
+          taskName: "execute-workflow",
+          workflowName: workflow.name,
         });
         ownRunId = newRunId;
       } catch (err) {
@@ -150,6 +152,8 @@ router.post("/workflows/:id/execute", requireApiKey, async (req, res) => {
         parentRunId: callerRunId,
         orgId,
         userId: executeUserId,
+        taskName: "execute-workflow",
+        workflowName: workflow.name,
       });
       ownRunId = newRunId;
     } catch (err) {
