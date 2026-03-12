@@ -73,13 +73,11 @@ export async function validateAndUpgradeWorkflows(
     const dag = wf.dag as DAG;
     const result = validateWorkflowEndpoints(dag, specs);
 
-    if (result.fieldIssues.length > 0) {
-      const hasErrors = result.fieldIssues.some((f) => f.severity === "error");
-      // Use console.log for warning-only issues (avoids red/orange in Railway logs)
-      const log = hasErrors ? console.warn : console.log;
-      log(
-        `[workflow-service] Workflow "${wf.name}" (${wf.id}) has ${result.fieldIssues.length} field issue(s):`,
-        result.fieldIssues.map((f) => `${f.severity}: ${f.reason}`).join("; "),
+    const errorIssues = result.fieldIssues.filter((f) => f.severity === "error");
+    if (errorIssues.length > 0) {
+      console.warn(
+        `[workflow-service] Workflow "${wf.name}" (${wf.id}) has ${errorIssues.length} field error(s):`,
+        errorIssues.map((f) => f.reason).join("; "),
       );
     }
 
