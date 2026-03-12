@@ -251,7 +251,7 @@ Campaign service orchestrates workflow execution with budget constraints. Key co
     {
       "id": "brand-profile",
       "type": "http.call",
-      "config": { "service": "brand", "method": "POST", "path": "/brands/{brandId}/sales-profile" },
+      "config": { "service": "brand", "method": "GET", "path": "/brands/{brandId}/sales-profile" },
       "inputMapping": { "params.brandId": "$ref:start-run.output.brandId" }
     },
     {
