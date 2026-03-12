@@ -202,6 +202,19 @@ ${nodeTypes}
 
 Prefer "http.call" over legacy named types for new workflows.
 
+## Content Generation + Email Send Pattern
+
+When using content-generation service (\`POST /generate\`):
+- \`body.type\` MUST be "cold-email" (matches the registered prompt type) — do NOT use "email", "cold_outreach", or other variants
+- Pass lead/brand data as \`body.variables.*\` (variable substitution into the prompt template)
+- Include tracking fields: \`body.brandId\`, \`body.campaignId\`, \`body.leadId\`, \`body.workflowName\`, \`body.apolloEnrichmentId\`
+- Response contains \`subject\` (string) and \`sequence\` (array of { step, bodyHtml, bodyText, daysSinceLastStep })
+
+When sending via email-gateway (\`POST /send\` with \`type: "broadcast"\`):
+- Pass the ENTIRE \`sequence\` array from content-generation output: \`"body.sequence": "$ref:email-generate.output.sequence"\`
+- Required fields: \`to\`, \`subject\`, \`sequence\`, \`recipientFirstName\`, \`recipientLastName\`, \`recipientCompany\`
+- The sequence is variable-length (LLM determines how many follow-up steps) — always pass it as-is
+
 ## Campaign Execution Model
 
 Campaign service orchestrates workflow execution with budget constraints. Key concepts:
@@ -257,15 +270,42 @@ Campaign service orchestrates workflow execution with budget constraints. Key co
     {
       "id": "email-generate",
       "type": "http.call",
-      "config": { "service": "content-generation", "method": "POST", "path": "/generate" },
-      "inputMapping": { "body.lead": "$ref:fetch-lead.output.lead", "body.brandProfile": "$ref:brand-profile.output" },
+      "config": { "service": "content-generation", "method": "POST", "path": "/generate", "body": { "type": "cold-email", "includeAiDisclaimer": true } },
+      "inputMapping": {
+        "body.brandId": "$ref:start-run.output.brandId",
+        "body.campaignId": "$ref:flow_input.campaignId",
+        "body.leadId": "$ref:fetch-lead.output.lead.leadId",
+        "body.workflowName": "$ref:start-run.output.workflowName",
+        "body.apolloEnrichmentId": "$ref:fetch-lead.output.lead.externalId",
+        "body.variables.leadEmail": "$ref:fetch-lead.output.lead.data.email",
+        "body.variables.leadFirstName": "$ref:fetch-lead.output.lead.data.firstName",
+        "body.variables.leadLastName": "$ref:fetch-lead.output.lead.data.lastName",
+        "body.variables.leadTitle": "$ref:fetch-lead.output.lead.data.title",
+        "body.variables.leadCompanyName": "$ref:fetch-lead.output.lead.data.organizationName",
+        "body.variables.leadCompanyDomain": "$ref:fetch-lead.output.lead.data.organizationDomain",
+        "body.variables.clientBrandUrl": "$ref:start-run.output.brandUrl",
+        "body.variables.clientCompanyOverview": "$ref:brand-profile.output.profile.companyOverview",
+        "body.variables.clientValueProposition": "$ref:brand-profile.output.profile.valueProposition",
+        "body.variables.clientTargetAudience": "$ref:brand-profile.output.profile.targetAudience"
+      },
       "retries": 0
     },
     {
       "id": "email-send",
       "type": "http.call",
-      "config": { "service": "email-gateway", "method": "POST", "path": "/send" },
-      "inputMapping": { "body.to": "$ref:fetch-lead.output.lead.data.email", "body.subject": "$ref:email-generate.output.subject", "body.bodyHtml": "$ref:email-generate.output.bodyHtml" },
+      "config": { "service": "email-gateway", "method": "POST", "path": "/send", "body": { "type": "broadcast", "tag": "cold-email" }, "validateResponse": { "field": "success", "equals": true } },
+      "inputMapping": {
+        "body.to": "$ref:fetch-lead.output.lead.data.email",
+        "body.subject": "$ref:email-generate.output.subject",
+        "body.sequence": "$ref:email-generate.output.sequence",
+        "body.leadId": "$ref:fetch-lead.output.lead.leadId",
+        "body.brandId": "$ref:start-run.output.brandId",
+        "body.campaignId": "$ref:flow_input.campaignId",
+        "body.workflowName": "$ref:start-run.output.workflowName",
+        "body.recipientFirstName": "$ref:fetch-lead.output.lead.data.firstName",
+        "body.recipientLastName": "$ref:fetch-lead.output.lead.data.lastName",
+        "body.recipientCompany": "$ref:fetch-lead.output.lead.data.organizationName"
+      },
       "retries": 0
     },
     {
