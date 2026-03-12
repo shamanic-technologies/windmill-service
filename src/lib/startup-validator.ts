@@ -223,32 +223,34 @@ async function attemptUpgrade(
     let windmillFlowPath: string | null = null;
 
     if (windmillClient) {
+      // Try updateFlow first (flow usually exists from previous startup).
+      // Only fall back to createFlow if the flow doesn't exist yet.
+      // This avoids Windmill logging noisy 400 "already exists" errors.
       try {
-        await windmillClient.createFlow({
-          path: flowPath,
+        await windmillClient.updateFlow(flowPath, {
           summary: stableName,
           description: result.description,
           value: openFlow.value,
           schema: openFlow.schema,
         });
         windmillFlowPath = flowPath;
-      } catch (err) {
-        // Flow may already exist from a previous startup attempt — update instead
-        const msg = err instanceof Error ? err.message : String(err);
-        if (msg.includes("already exists")) {
+      } catch (updateErr) {
+        const msg = updateErr instanceof Error ? updateErr.message : String(updateErr);
+        if (msg.includes("not found") || msg.includes("404")) {
           try {
-            await windmillClient.updateFlow(flowPath, {
+            await windmillClient.createFlow({
+              path: flowPath,
               summary: stableName,
               description: result.description,
               value: openFlow.value,
               schema: openFlow.schema,
             });
             windmillFlowPath = flowPath;
-          } catch (updateErr) {
-            console.error("[workflow-service] Failed to update existing flow in Windmill:", updateErr);
+          } catch (createErr) {
+            console.error("[workflow-service] Failed to create flow in Windmill:", createErr);
           }
         } else {
-          console.error("[workflow-service] Failed to create upgraded flow in Windmill:", err);
+          console.error("[workflow-service] Failed to update flow in Windmill:", updateErr);
         }
       }
     }

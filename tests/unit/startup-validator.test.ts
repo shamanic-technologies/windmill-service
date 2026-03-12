@@ -455,7 +455,7 @@ describe("validateAndUpgradeWorkflows", () => {
     expect(deprecations.length).toBe(0);
   });
 
-  it("falls back to updateFlow when createFlow returns 'already exists'", async () => {
+  it("updates existing flow via updateFlow (no createFlow needed)", async () => {
     dbSelectResult = [BROKEN_WORKFLOW];
     mockFetchSpecsForServices.mockResolvedValue(
       new Map([["campaign", CAMPAIGN_SPEC]]),
@@ -483,7 +483,7 @@ describe("validateAndUpgradeWorkflows", () => {
       description: "Fixed workflow",
     });
 
-    const mockCreateFlow = vi.fn().mockRejectedValue(new Error("Flow f/workflows/org-1/flow already exists"));
+    const mockCreateFlow = vi.fn();
     const mockUpdateFlow = vi.fn().mockResolvedValue(undefined);
 
     await validateAndUpgradeWorkflows({
@@ -494,16 +494,16 @@ describe("validateAndUpgradeWorkflows", () => {
       } as any,
     });
 
-    // Should have tried createFlow first, then fallen back to updateFlow
-    expect(mockCreateFlow).toHaveBeenCalledTimes(1);
+    // Should have called updateFlow only — no createFlow needed
     expect(mockUpdateFlow).toHaveBeenCalledTimes(1);
+    expect(mockCreateFlow).not.toHaveBeenCalled();
 
     // The new workflow should still be inserted in the DB
     expect(dbInserts.length).toBe(1);
     expect(dbInserts[0].status).toBe("active");
   });
 
-  it("logs error for non-'already exists' createFlow failures without crashing", async () => {
+  it("falls back to createFlow when updateFlow returns 'not found'", async () => {
     dbSelectResult = [BROKEN_WORKFLOW];
     mockFetchSpecsForServices.mockResolvedValue(
       new Map([["campaign", CAMPAIGN_SPEC]]),
@@ -531,8 +531,55 @@ describe("validateAndUpgradeWorkflows", () => {
       description: "Fixed workflow",
     });
 
-    const mockCreateFlow = vi.fn().mockRejectedValue(new Error("Windmill API error: 500 Internal Server Error"));
-    const mockUpdateFlow = vi.fn();
+    const mockUpdateFlow = vi.fn().mockRejectedValue(new Error("Flow not found"));
+    const mockCreateFlow = vi.fn().mockResolvedValue(undefined);
+
+    await validateAndUpgradeWorkflows({
+      db: createMockDb() as any,
+      windmillClient: {
+        createFlow: mockCreateFlow,
+        updateFlow: mockUpdateFlow,
+      } as any,
+    });
+
+    // Should have tried updateFlow first, then fallen back to createFlow
+    expect(mockUpdateFlow).toHaveBeenCalledTimes(1);
+    expect(mockCreateFlow).toHaveBeenCalledTimes(1);
+
+    expect(dbInserts.length).toBe(1);
+    expect(dbInserts[0].status).toBe("active");
+  });
+
+  it("logs error for non-'not found' updateFlow failures without crashing", async () => {
+    dbSelectResult = [BROKEN_WORKFLOW];
+    mockFetchSpecsForServices.mockResolvedValue(
+      new Map([["campaign", CAMPAIGN_SPEC]]),
+    );
+    mockFetchPlatformAnthropicKey.mockResolvedValue({ key: "test-key", keySource: "platform" });
+    mockCreatePlatformRun.mockResolvedValue({ runId: "run-3" });
+    mockClosePlatformRun.mockResolvedValue(undefined);
+
+    const fixedDag = {
+      nodes: [
+        {
+          id: "gate-check",
+          type: "http.call",
+          config: { service: "campaign", method: "POST", path: "/gate-check" },
+        },
+      ],
+      edges: [],
+    };
+
+    mockUpgradeWorkflow.mockResolvedValue({
+      dag: fixedDag,
+      category: "sales",
+      channel: "email",
+      audienceType: "cold-outreach",
+      description: "Fixed workflow",
+    });
+
+    const mockUpdateFlow = vi.fn().mockRejectedValue(new Error("Windmill API error: 500 Internal Server Error"));
+    const mockCreateFlow = vi.fn();
 
     const consoleSpy = vi.spyOn(console, "error");
 
@@ -544,12 +591,12 @@ describe("validateAndUpgradeWorkflows", () => {
       } as any,
     });
 
-    // Should NOT have called updateFlow (error is not "already exists")
-    expect(mockUpdateFlow).not.toHaveBeenCalled();
+    // Should NOT have called createFlow (error is not "not found")
+    expect(mockCreateFlow).not.toHaveBeenCalled();
 
     // Should have logged the error
     expect(consoleSpy).toHaveBeenCalledWith(
-      expect.stringContaining("Failed to create upgraded flow"),
+      expect.stringContaining("Failed to update flow"),
       expect.any(Error),
     );
     consoleSpy.mockRestore();
