@@ -73,17 +73,19 @@ export async function validateAndUpgradeWorkflows(
     const dag = wf.dag as DAG;
     const result = validateWorkflowEndpoints(dag, specs);
 
-    const errorIssues = result.fieldIssues.filter((f) => f.severity === "error");
-    if (errorIssues.length > 0) {
-      console.warn(
-        `[workflow-service] Workflow "${wf.name}" (${wf.id}) has ${errorIssues.length} field error(s):`,
-        errorIssues.map((f) => f.reason).join("; "),
-      );
-    }
+    // Check for any issues: broken endpoints, field errors, or field warnings
+    const hasIssues = !result.valid || result.fieldIssues.length > 0;
 
-    if (result.valid) {
+    if (!hasIssues) {
       validCount++;
       continue;
+    }
+
+    if (result.fieldIssues.length > 0) {
+      console.warn(
+        `[workflow-service] Workflow "${wf.name}" (${wf.id}) has ${result.fieldIssues.length} field issue(s):`,
+        result.fieldIssues.map((f) => f.reason).join("; "),
+      );
     }
 
     if (result.invalidEndpoints.length > 0) {
@@ -93,20 +95,13 @@ export async function validateAndUpgradeWorkflows(
       );
     }
 
-    const fieldErrors = result.fieldIssues.filter((f) => f.severity === "error");
-    if (fieldErrors.length > 0 && result.invalidEndpoints.length === 0) {
-      console.warn(
-        `[workflow-service] Workflow "${wf.name}" (${wf.id}) has ${fieldErrors.length} field error(s) — attempting upgrade`,
-      );
-    }
-
-    // Attempt upgrade
+    // Attempt upgrade — pass ALL field issues (errors + warnings) so the LLM can fix everything
     try {
       const upgraded = await attemptUpgrade(
         wf,
         dag,
         result.invalidEndpoints,
-        result.fieldIssues.filter((f) => f.severity === "error"),
+        result.fieldIssues,
         database,
         windmillClient,
       );

@@ -429,6 +429,107 @@ describe("validateAndUpgradeWorkflows", () => {
     expect(dbInserts[0].status).toBe("active");
   });
 
+  it("upgrades workflow with warning-only field issues (unknown body fields)", async () => {
+    // Workflow sends "bodyHtml" but schema expects "htmlBody" — this is a warning, not an error
+    const WARNING_ONLY_WORKFLOW = {
+      ...VALID_WORKFLOW,
+      id: "wf-warning",
+      name: "sales-email-cold-outreach-WarningOnly",
+      signatureName: "WarningOnly",
+      dag: {
+        nodes: [
+          {
+            id: "end-run",
+            type: "http.call",
+            config: { service: "campaign", method: "POST", path: "/end-run" },
+            inputMapping: {
+              "body.campaignId": "$ref:flow_input.campaignId",
+              "body.orgId": "$ref:flow_input.orgId",
+              "body.bodyHtml": "$ref:email-generate.output.bodyHtml",
+            },
+          },
+        ],
+        edges: [],
+      },
+    };
+
+    // Spec has campaignId and orgId as valid fields but NOT bodyHtml
+    const SPEC_WITH_KNOWN_FIELDS = {
+      paths: {
+        "/end-run": {
+          post: {
+            requestBody: {
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    required: ["campaignId", "orgId"],
+                    properties: {
+                      campaignId: { type: "string" },
+                      orgId: { type: "string" },
+                      success: { type: "boolean" },
+                      leadFound: { type: "boolean" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    };
+
+    dbSelectResult = [WARNING_ONLY_WORKFLOW];
+    mockFetchSpecsForServices.mockResolvedValue(
+      new Map([["campaign", SPEC_WITH_KNOWN_FIELDS]]),
+    );
+
+    mockFetchPlatformAnthropicKey.mockResolvedValue({ key: "test-key", keySource: "platform" });
+    mockCreatePlatformRun.mockResolvedValue({ runId: "warning-run-1" });
+    mockClosePlatformRun.mockResolvedValue(undefined);
+
+    const fixedDag = {
+      nodes: [
+        {
+          id: "end-run",
+          type: "http.call",
+          config: { service: "campaign", method: "POST", path: "/end-run" },
+          inputMapping: {
+            "body.campaignId": "$ref:flow_input.campaignId",
+            "body.orgId": "$ref:flow_input.orgId",
+          },
+        },
+      ],
+      edges: [],
+    };
+
+    mockUpgradeWorkflow.mockResolvedValue({
+      dag: fixedDag,
+      category: "sales",
+      channel: "email",
+      audienceType: "cold-outreach",
+      description: "Fixed workflow",
+    });
+
+    await validateAndUpgradeWorkflows({
+      db: createMockDb() as any,
+      windmillClient: null,
+    });
+
+    // Should attempt upgrade even though only warnings (no errors)
+    expect(mockUpgradeWorkflow).toHaveBeenCalledTimes(1);
+
+    // upgradeWorkflow should receive the warning-level field issues
+    const callArgs = mockUpgradeWorkflow.mock.calls[0];
+    expect(callArgs[1]).toEqual([]); // no invalid endpoints
+    expect(callArgs[2]).toEqual([   // fieldIssues includes warnings
+      expect.objectContaining({ nodeId: "end-run", field: "bodyHtml", severity: "warning" }),
+    ]);
+
+    // Should have inserted a new upgraded workflow
+    expect(dbInserts.length).toBe(1);
+  });
+
   it("throws when upgrade fails (LLM error) and closes platform run as failed", async () => {
     dbSelectResult = [BROKEN_WORKFLOW];
     mockFetchSpecsForServices.mockResolvedValue(
