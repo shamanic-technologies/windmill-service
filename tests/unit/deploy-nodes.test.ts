@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { deployNodes } from "../../scripts/deploy-nodes.js";
+import { deployNodes } from "../../src/lib/deploy-nodes.js";
 import type { WindmillClient } from "../../src/lib/windmill-client.js";
 
 function mockClient(scripts: Map<string, { hash: string; content: string }>) {

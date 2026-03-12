@@ -110,6 +110,34 @@ describe("http-call script", () => {
     ).rejects.toThrow("Missing: UNKNOWN_SERVICE_URL");
   });
 
+  it("regression: identity headers are sent even with body containing orgId (gate-check scenario)", async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse({ allowed: true }));
+
+    // Simulate what Windmill sends: body has orgId+campaignId, AND orgId/userId/runId as separate params
+    await main(
+      "campaign", "POST", "/gate-check",
+      { orgId: "org-from-body", campaignId: "campaign-uuid" },
+      undefined,
+      serviceEnvs,
+      undefined,
+      undefined,
+      "org-from-flow-input",
+      "user-uuid",
+      "run-uuid",
+    );
+
+    const [url, options] = mockFetch.mock.calls[0];
+    expect(url).toBe("https://campaign.example.com/gate-check");
+    // Body should contain both fields
+    const sentBody = JSON.parse(options.body);
+    expect(sentBody.orgId).toBe("org-from-body");
+    expect(sentBody.campaignId).toBe("campaign-uuid");
+    // Identity headers must be present
+    expect(options.headers["x-org-id"]).toBe("org-from-flow-input");
+    expect(options.headers["x-user-id"]).toBe("user-uuid");
+    expect(options.headers["x-run-id"]).toBe("run-uuid");
+  });
+
   describe("validateResponse", () => {
     it("passes when response field matches expected value", async () => {
       mockFetch.mockResolvedValueOnce(jsonResponse({ allowed: true, reason: "ok" }));

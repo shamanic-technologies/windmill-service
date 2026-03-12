@@ -7,6 +7,7 @@ import { getWindmillClient } from "./lib/windmill-client.js";
 import { JobPoller } from "./lib/job-poller.js";
 import { requireIdentity } from "./middleware/auth.js";
 import { checkApiRegistryHealth, validateAndUpgradeWorkflows } from "./lib/startup-validator.js";
+import { deployNodes } from "./lib/deploy-nodes.js";
 import healthRoutes from "./routes/health.js";
 import workflowsRoutes from "./routes/workflows.js";
 import workflowRunsRoutes from "./routes/workflow-runs.js";
@@ -55,6 +56,17 @@ if (process.env.NODE_ENV !== "test") {
       // Start job poller (only if Windmill is configured)
       const windmillClient = getWindmillClient();
       if (windmillClient) {
+        // Sync node scripts to Windmill — idempotent, skips unchanged scripts
+        try {
+          const deployed = await deployNodes(windmillClient);
+          if (deployed.length > 0) {
+            console.log(`[workflow-service] Deployed ${deployed.length} node script(s) to Windmill`);
+          }
+        } catch (err) {
+          console.error("[workflow-service] Failed to deploy node scripts to Windmill:", err);
+          process.exit(1);
+        }
+
         const poller = new JobPoller(db, windmillClient, workflowRuns);
         poller.start();
       } else {
