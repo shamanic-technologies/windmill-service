@@ -252,19 +252,16 @@ describe("POST /workflows/:id/execute", () => {
   });
 
   it("stores campaignId from inputs, not from workflow record", async () => {
-    mockSelectResponses.push(
-      [{  // 1. workflow lookup
-        id: "wf-1",
-        orgId: "org-1",
-        name: "Test Flow",
-        campaignId: null,
-        subrequestId: null,
-        windmillFlowPath: "f/workflows/org_1/test_flow",
-        windmillWorkspace: "prod",
-        dag: VALID_LINEAR_DAG,
-      }],
-      [],  // 2. concurrency check → no active run
-    );
+    mockWorkflows.push({
+      id: "wf-1",
+      orgId: "org-1",
+      name: "Test Flow",
+      campaignId: null,
+      subrequestId: null,
+      windmillFlowPath: "f/workflows/org_1/test_flow",
+      windmillWorkspace: "prod",
+      dag: VALID_LINEAR_DAG,
+    });
 
     const res = await request
       .post("/workflows/wf-1/execute")
@@ -277,19 +274,16 @@ describe("POST /workflows/:id/execute", () => {
   });
 
   it("falls back to workflow record campaignId when not in inputs", async () => {
-    mockSelectResponses.push(
-      [{  // 1. workflow lookup
-        id: "wf-1",
-        orgId: "org-1",
-        name: "Test Flow",
-        campaignId: "camp-from-wf",
-        subrequestId: "sub-from-wf",
-        windmillFlowPath: "f/workflows/org_1/test_flow",
-        windmillWorkspace: "prod",
-        dag: VALID_LINEAR_DAG,
-      }],
-      [],  // 2. concurrency check → no active run
-    );
+    mockWorkflows.push({
+      id: "wf-1",
+      orgId: "org-1",
+      name: "Test Flow",
+      campaignId: "camp-from-wf",
+      subrequestId: "sub-from-wf",
+      windmillFlowPath: "f/workflows/org_1/test_flow",
+      windmillWorkspace: "prod",
+      dag: VALID_LINEAR_DAG,
+    });
 
     const res = await request
       .post("/workflows/wf-1/execute")
@@ -299,54 +293,6 @@ describe("POST /workflows/:id/execute", () => {
     expect(res.status).toBe(201);
     expect(res.body.campaignId).toBe("camp-from-wf");
     expect(res.body.subrequestId).toBe("sub-from-wf");
-  });
-
-  it("rejects execution when an active run already exists for the same campaign", async () => {
-    mockSelectResponses.push(
-      [{  // 1. workflow lookup
-        id: "wf-1",
-        orgId: "org-1",
-        name: "Test Flow",
-        campaignId: null,
-        windmillFlowPath: "f/workflows/org_1/test_flow",
-        windmillWorkspace: "prod",
-        dag: VALID_LINEAR_DAG,
-      }],
-      [{  // 2. concurrency check → active run exists
-        id: "existing-run-1",
-      }],
-    );
-
-    const res = await request
-      .post("/workflows/wf-1/execute")
-      .set(AUTH)
-      .send({ inputs: { campaignId: "camp-dup" } });
-
-    expect(res.status).toBe(409);
-    expect(res.body.error).toContain("already active");
-    expect(res.body.activeRunId).toBe("existing-run-1");
-    expect(mockRunFlow).not.toHaveBeenCalled();
-    expect(mockCreateRun).not.toHaveBeenCalled();
-  });
-
-  it("skips concurrency guard when no campaignId is provided", async () => {
-    mockWorkflows.push({
-      id: "wf-1",
-      orgId: "org-1",
-      name: "Test Flow",
-      campaignId: null,
-      windmillFlowPath: "f/workflows/org_1/test_flow",
-      windmillWorkspace: "prod",
-      dag: VALID_LINEAR_DAG,
-    });
-
-    const res = await request
-      .post("/workflows/wf-1/execute")
-      .set(AUTH)
-      .send({ inputs: { key: "value" } });
-
-    expect(res.status).toBe(201);
-    expect(mockRunFlow).toHaveBeenCalled();
   });
 
   it("requires authentication", async () => {
@@ -438,17 +384,15 @@ describe("POST /workflows/by-name/:name/execute", () => {
   });
 
   it("cross-org: workflow deployed by org-A can be executed by org-B", async () => {
-    mockSelectResponses.push(
-      [{  // 1. active workflow lookup
-        id: "wf-cross",
-        orgId: "8c734aed-45ac-4780-a4ee-1fdcbbedeab1",
-        name: "sales-email-cold-outreach-pharaoh",
-        windmillFlowPath: "f/workflows/deployer/sales_email_cold_outreach_pharaoh",
-        windmillWorkspace: "prod",
-        dag: VALID_LINEAR_DAG,
-      }],
-      [],  // 2. concurrency check → no active run
-    );
+    // Workflow deployed by a completely different org
+    mockWorkflows.push({
+      id: "wf-cross",
+      orgId: "8c734aed-45ac-4780-a4ee-1fdcbbedeab1",
+      name: "sales-email-cold-outreach-pharaoh",
+      windmillFlowPath: "f/workflows/deployer/sales_email_cold_outreach_pharaoh",
+      windmillWorkspace: "prod",
+      dag: VALID_LINEAR_DAG,
+    });
 
     // Execute with a different org in headers
     const CROSS_ORG_AUTH = {
@@ -638,7 +582,6 @@ describe("POST /workflows/by-name/:name/execute", () => {
         windmillWorkspace: "prod",
         dag: VALID_LINEAR_DAG,
       }],
-      [],  // 4. concurrency check → no active run
     );
 
     const res = await request
@@ -649,34 +592,6 @@ describe("POST /workflows/by-name/:name/execute", () => {
     expect(res.status).toBe(201);
     expect(res.body.campaignId).toBe("camp-runtime");
     expect(res.body.subrequestId).toBe("sub-runtime");
-  });
-
-  it("rejects execution when an active run already exists for the same campaign", async () => {
-    mockSelectResponses.push(
-      [{  // 1. active workflow lookup
-        id: "wf-1",
-        orgId: "org-1",
-        name: "campaign-flow",
-        campaignId: null,
-        windmillFlowPath: "f/workflows/org_1/campaign_flow",
-        windmillWorkspace: "prod",
-        dag: VALID_LINEAR_DAG,
-      }],
-      [{  // 2. concurrency check → active run exists
-        id: "existing-run-99",
-      }],
-    );
-
-    const res = await request
-      .post("/workflows/by-name/campaign-flow/execute")
-      .set(AUTH)
-      .send({ inputs: { campaignId: "camp-already-running" } });
-
-    expect(res.status).toBe(409);
-    expect(res.body.error).toContain("already active");
-    expect(res.body.activeRunId).toBe("existing-run-99");
-    expect(mockRunFlow).not.toHaveBeenCalled();
-    expect(mockCreateRun).not.toHaveBeenCalled();
   });
 
   it("requires authentication", async () => {
