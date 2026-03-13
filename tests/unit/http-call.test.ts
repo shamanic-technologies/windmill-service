@@ -185,6 +185,32 @@ describe("http-call script", () => {
       expect(url).toBe("https://campaign.example.com/orgs/org-1/campaigns/camp-2");
     });
 
+    it("replaces :param syntax in path with params values", async () => {
+      mockFetch.mockResolvedValueOnce(jsonResponse({ tracked: true }));
+
+      const runsEnvs = {
+        ...serviceEnvs,
+        RUNS_SERVICE_URL: "https://runs.example.com",
+        RUNS_SERVICE_API_KEY: "runs-key-789",
+      };
+
+      await main(
+        "runs", "POST", "/runs/:id/costs",
+        { amount: 0.1, costType: "email_send" },
+        undefined,
+        runsEnvs,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        { id: "run-uuid-456" },
+      );
+
+      const [url] = mockFetch.mock.calls[0];
+      expect(url).toBe("https://runs.example.com/runs/run-uuid-456/costs");
+    });
+
     it("works without params (backward compat)", async () => {
       mockFetch.mockResolvedValueOnce(jsonResponse({ ok: true }));
 

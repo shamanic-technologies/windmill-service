@@ -493,6 +493,25 @@ export const DAG_WITH_TWO_BRANCHES: DAG = {
   ],
 };
 
+export const DAG_WITH_PATH_PARAMS: DAG = {
+  nodes: [
+    {
+      id: "track-cost",
+      type: "http.call",
+      config: {
+        body: { amount: 0.1, costType: "email_send" },
+        path: "/runs/:id/costs",
+        method: "POST",
+        service: "runs",
+      },
+      inputMapping: {
+        "path.id": "$ref:start-run.output.runId",
+      },
+    },
+  ],
+  edges: [],
+};
+
 export const POLARITY_WELCOME_DAG: DAG = {
   nodes: [
     {

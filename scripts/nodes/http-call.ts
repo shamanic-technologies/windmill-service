@@ -35,11 +35,14 @@ export async function main(
     );
   }
 
-  // Resolve path parameters: "/brands/{brandId}/profile" + params.brandId → "/brands/abc/profile"
+  // Resolve path parameters: "/brands/{brandId}/profile" or "/brands/:brandId/profile"
+  // + params.brandId → "/brands/abc/profile"
   let resolvedPath = path;
   if (params) {
     for (const [key, value] of Object.entries(params)) {
-      resolvedPath = resolvedPath.replace(`{${key}}`, encodeURIComponent(String(value)));
+      const encoded = encodeURIComponent(String(value));
+      resolvedPath = resolvedPath.replace(`{${key}}`, encoded);
+      resolvedPath = resolvedPath.replace(`:${key}`, encoded);
     }
   }
 

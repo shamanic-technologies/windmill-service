@@ -107,9 +107,17 @@ export function collapseDotNotation(
   for (const [root, children] of dotGroups) {
     // If there's a static base for this root key, we spread it first
     const staticBase = result[root]?.type === "static" ? result[root].value : undefined;
-    const baseObj = (staticBase && typeof staticBase === "object" && staticBase !== null)
-      ? staticBase as Record<string, unknown>
-      : undefined;
+
+    // If the static base is a scalar (string, number, etc.), don't replace it
+    // with a collapsed object — keep both the scalar and the dot-notation keys.
+    if (staticBase !== undefined && (typeof staticBase !== "object" || staticBase === null)) {
+      for (const { path, transform } of children) {
+        result[`${root}.${path}`] = transform;
+      }
+      continue;
+    }
+
+    const baseObj = staticBase as Record<string, unknown> | undefined;
 
     // Separate direct fields (body.field) from nested fields (body.metadata.field)
     const directFields = new Map<string, string>();

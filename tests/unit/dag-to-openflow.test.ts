@@ -18,6 +18,7 @@ import {
   DAG_WITH_SKIP_IF,
   DAG_WITH_CONDITION_CHAIN,
   DAG_WITH_TWO_BRANCHES,
+  DAG_WITH_PATH_PARAMS,
 } from "../helpers/fixtures.js";
 
 describe("dagToOpenFlow", () => {
@@ -567,6 +568,27 @@ describe("dagToOpenFlow", () => {
       // Nested metadata should merge static source with dynamic emailGenerationId
       expect(expr).toContain('"source"');
       expect(expr).toContain("results.email_generate?.id");
+    }
+  });
+
+  it("regression: rewrites path.* inputMapping to params.* for http.call nodes", () => {
+    const result = dagToOpenFlow(DAG_WITH_PATH_PARAMS, "Track Cost");
+
+    const mod = result.value.modules[0];
+    expect(mod.id).toBe("track_cost");
+    if (mod.value.type === "script") {
+      const transforms = mod.value.input_transforms as Record<
+        string,
+        { type: string; value?: unknown; expr?: string }
+      >;
+      // path should remain the static string, NOT be replaced by an object
+      expect(transforms.path).toEqual({ type: "static", value: "/runs/:id/costs" });
+      // params should contain the dynamic path parameter
+      expect(transforms.params).toBeDefined();
+      expect(transforms.params.type).toBe("javascript");
+      expect(transforms.params.expr).toContain("results.start_run?.runId");
+      // body should still contain the static config
+      expect(transforms.body).toBeDefined();
     }
   });
 });
