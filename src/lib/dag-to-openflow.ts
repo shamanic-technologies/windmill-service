@@ -353,9 +353,24 @@ function nodeToModule(node: DAGNode, dag: DAG): FlowModule | null {
     ? node.config.skipIf : undefined;
   const { retries: _r, stopAfterIf: _s, skipIf: _sk, ...scriptConfig } = node.config ?? {};
 
+  // For http.call nodes, rewrite "path.*" inputMapping keys to "params.*"
+  // so collapseDotNotation doesn't replace the scalar path string with an object.
+  let resolvedInputMapping = node.inputMapping;
+  if (node.type === "http.call" && resolvedInputMapping) {
+    const rewritten: Record<string, string> = {};
+    for (const [key, value] of Object.entries(resolvedInputMapping)) {
+      if (key.startsWith("path.")) {
+        rewritten[`params.${key.slice(5)}`] = value;
+      } else {
+        rewritten[key] = value;
+      }
+    }
+    resolvedInputMapping = rewritten;
+  }
+
   const inputTransforms = buildInputTransforms(
     Object.keys(scriptConfig).length > 0 ? scriptConfig : undefined,
-    node.inputMapping,
+    resolvedInputMapping,
   );
 
   // Auto-inject orgId, userId, runId, and serviceEnvs from flow_input unless explicitly mapped

@@ -155,6 +155,20 @@ describe("buildInputTransforms", () => {
     expect(result.body.expr).toContain("results.gen?.id");
   });
 
+  it("regression: does not replace scalar config with collapsed object", () => {
+    const result = buildInputTransforms(
+      { path: "/runs/:id/costs", service: "runs", method: "POST" },
+      { "path.id": "$ref:start-run.output.runId" },
+    );
+
+    // path should remain the scalar string — NOT be replaced by { id: expr }
+    expect(result.path).toEqual({ type: "static", value: "/runs/:id/costs" });
+    // The dot-notation key should be preserved as-is since root is scalar
+    expect(result["path.id"]).toBeDefined();
+    expect(result["path.id"].type).toBe("javascript");
+    expect(result["path.id"].expr).toContain("results.start_run?.runId");
+  });
+
   it("leaves non-dot-notation keys untouched", () => {
     const result = buildInputTransforms(
       { service: "stripe", method: "GET" },
