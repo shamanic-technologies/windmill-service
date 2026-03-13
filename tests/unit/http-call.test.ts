@@ -60,6 +60,31 @@ describe("http-call script", () => {
     expect(options.headers["x-run-id"]).toBe("run-uuid-3");
   });
 
+  it("auto-injects tracking headers (x-campaign-id, x-brand-id, x-workflow-name) when provided", async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse({ ok: true }));
+
+    await main(
+      "lead", "POST", "/buffer/next",
+      { foo: "bar" },
+      undefined,
+      serviceEnvs,
+      undefined,
+      undefined,
+      "org-1",
+      "user-1",
+      "run-1",
+      undefined, // params
+      "camp-123",
+      "brand-456",
+      "sales-email-cold-outreach",
+    );
+
+    const [, options] = mockFetch.mock.calls[0];
+    expect(options.headers["x-campaign-id"]).toBe("camp-123");
+    expect(options.headers["x-brand-id"]).toBe("brand-456");
+    expect(options.headers["x-workflow-name"]).toBe("sales-email-cold-outreach");
+  });
+
   it("merges custom headers with defaults", async () => {
     mockFetch.mockResolvedValueOnce(jsonResponse({ found: true }));
 

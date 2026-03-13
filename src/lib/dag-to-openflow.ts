@@ -72,6 +72,9 @@ export function dagToOpenFlow(dag: DAG, name: string): OpenFlow {
     userId: { type: "string", description: "User identifier" },
     runId: { type: "string", description: "Runs-service run ID for this execution" },
     serviceEnvs: { type: "object", description: "Service URLs and API keys injected by workflow-service" },
+    campaignId: { type: "string", description: "Campaign identifier (auto-injected)" },
+    brandId: { type: "string", description: "Brand identifier (auto-injected)" },
+    workflowName: { type: "string", description: "Workflow name (auto-injected)" },
   };
   for (const node of dag.nodes) {
     if (!node.inputMapping) continue;
@@ -373,18 +376,20 @@ function nodeToModule(node: DAGNode, dag: DAG): FlowModule | null {
     resolvedInputMapping,
   );
 
-  // Auto-inject orgId, userId, runId, and serviceEnvs from flow_input unless explicitly mapped
-  if (!inputTransforms.orgId) {
-    inputTransforms.orgId = { type: "javascript", expr: "flow_input.orgId" };
-  }
-  if (!inputTransforms.userId) {
-    inputTransforms.userId = { type: "javascript", expr: "flow_input.userId" };
-  }
-  if (!inputTransforms.runId) {
-    inputTransforms.runId = { type: "javascript", expr: "flow_input.runId" };
-  }
-  if (!inputTransforms.serviceEnvs) {
-    inputTransforms.serviceEnvs = { type: "javascript", expr: "flow_input.serviceEnvs" };
+  // Auto-inject identity + tracking context from flow_input unless explicitly mapped
+  const autoInjects: Record<string, string> = {
+    orgId: "flow_input.orgId",
+    userId: "flow_input.userId",
+    runId: "flow_input.runId",
+    serviceEnvs: "flow_input.serviceEnvs",
+    campaignId: "flow_input.campaignId",
+    brandId: "flow_input.brandId",
+    workflowName: "flow_input.workflowName",
+  };
+  for (const [key, expr] of Object.entries(autoInjects)) {
+    if (!inputTransforms[key]) {
+      inputTransforms[key] = { type: "javascript", expr };
+    }
   }
   const mod: FlowModule = {
     id: moduleId,
@@ -417,18 +422,20 @@ function buildFailureModule(node: DAGNode): FlowModule | null {
 
   const inputTransforms = buildInputTransforms(node.config, node.inputMapping);
 
-  // Auto-inject orgId, userId, runId, and serviceEnvs from flow_input unless explicitly mapped
-  if (!inputTransforms.orgId) {
-    inputTransforms.orgId = { type: "javascript", expr: "flow_input.orgId" };
-  }
-  if (!inputTransforms.userId) {
-    inputTransforms.userId = { type: "javascript", expr: "flow_input.userId" };
-  }
-  if (!inputTransforms.runId) {
-    inputTransforms.runId = { type: "javascript", expr: "flow_input.runId" };
-  }
-  if (!inputTransforms.serviceEnvs) {
-    inputTransforms.serviceEnvs = { type: "javascript", expr: "flow_input.serviceEnvs" };
+  // Auto-inject identity + tracking context from flow_input unless explicitly mapped
+  const failureAutoInjects: Record<string, string> = {
+    orgId: "flow_input.orgId",
+    userId: "flow_input.userId",
+    runId: "flow_input.runId",
+    serviceEnvs: "flow_input.serviceEnvs",
+    campaignId: "flow_input.campaignId",
+    brandId: "flow_input.brandId",
+    workflowName: "flow_input.workflowName",
+  };
+  for (const [key, expr] of Object.entries(failureAutoInjects)) {
+    if (!inputTransforms[key]) {
+      inputTransforms[key] = { type: "javascript", expr };
+    }
   }
 
   // Inject error context — available to the onError node

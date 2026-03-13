@@ -106,6 +106,10 @@ router.post(
       const userId = res.locals.userId as string;
       const callerRunId = res.locals.runId as string;
 
+      // Extract tracking context from inputs (campaign workflows always pass these)
+      const campaignId = body.inputs?.campaignId as string | undefined;
+      const brandId = body.inputs?.brandId as string | undefined;
+
       // Create a child run in runs-service (links to caller's run via parentRunId)
       let ownRunId: string | null = null;
       try {
@@ -115,6 +119,8 @@ router.post(
           userId,
           taskName: "execute-workflow",
           workflowName: workflow.name,
+          campaignId,
+          brandId,
         });
         ownRunId = newRunId;
       } catch (err) {
@@ -123,12 +129,12 @@ router.post(
         return;
       }
 
-      // Run in Windmill — inject orgId, userId, and our own runId so nodes can access them
+      // Run in Windmill — inject orgId, userId, runId, and tracking context so nodes can access them
       let windmillJobId: string | null = null;
       const client = getWindmillClient();
       if (client) {
         try {
-          const flowInputs = { ...body.inputs, orgId, userId, runId: ownRunId, serviceEnvs: collectServiceEnvs() };
+          const flowInputs = { ...body.inputs, orgId, userId, runId: ownRunId, workflowName: workflow.name, serviceEnvs: collectServiceEnvs() };
           windmillJobId = await client.runFlow(
             workflow.windmillFlowPath,
             flowInputs
@@ -225,6 +231,10 @@ router.post("/workflows/:id/execute", requireApiKey, async (req, res) => {
     const executeUserId = res.locals.userId as string;
     const callerRunId = res.locals.runId as string;
 
+    // Extract tracking context from inputs
+    const execCampaignId = body.inputs?.campaignId as string | undefined;
+    const execBrandId = body.inputs?.brandId as string | undefined;
+
     // Create a child run in runs-service (links to caller's run via parentRunId)
     let ownRunId: string | null = null;
     try {
@@ -234,6 +244,8 @@ router.post("/workflows/:id/execute", requireApiKey, async (req, res) => {
         userId: executeUserId,
         taskName: "execute-workflow",
         workflowName: workflow.name,
+        campaignId: execCampaignId,
+        brandId: execBrandId,
       });
       ownRunId = newRunId;
     } catch (err) {
@@ -242,12 +254,12 @@ router.post("/workflows/:id/execute", requireApiKey, async (req, res) => {
       return;
     }
 
-    // Run in Windmill — inject orgId, userId, and our own runId so nodes can access them
+    // Run in Windmill — inject orgId, userId, runId, and tracking context so nodes can access them
     let windmillJobId: string | null = null;
     const client = getWindmillClient();
     if (client) {
       try {
-        const flowInputs = { ...body.inputs, orgId, userId: executeUserId, runId: ownRunId, serviceEnvs: collectServiceEnvs() };
+        const flowInputs = { ...body.inputs, orgId, userId: executeUserId, runId: ownRunId, workflowName: workflow.name, serviceEnvs: collectServiceEnvs() };
         windmillJobId = await client.runFlow(
           workflow.windmillFlowPath,
           flowInputs
