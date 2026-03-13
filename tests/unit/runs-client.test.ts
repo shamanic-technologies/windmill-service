@@ -81,6 +81,39 @@ describe("createRun", () => {
     );
   });
 
+  it("includes campaignId and brandId in body when provided", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ id: "new-run-tracking" }),
+      })
+    );
+
+    await createRun({
+      parentRunId: "caller-run-1",
+      orgId: "org-1",
+      userId: "user-1",
+      taskName: "execute-workflow",
+      workflowName: "sales-email-cold-outreach",
+      campaignId: "camp-123",
+      brandId: "brand-456",
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      "http://localhost:5000/v1/runs",
+      expect.objectContaining({
+        body: JSON.stringify({
+          serviceName: "workflow",
+          taskName: "execute-workflow",
+          workflowName: "sales-email-cold-outreach",
+          campaignId: "camp-123",
+          brandId: "brand-456",
+        }),
+      })
+    );
+  });
+
   it("does not send orgId, userId, or parentRunId in request body", async () => {
     vi.stubGlobal(
       "fetch",

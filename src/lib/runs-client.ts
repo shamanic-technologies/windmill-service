@@ -32,6 +32,8 @@ export async function createRun(opts: {
   userId: string;
   taskName: string;
   workflowName?: string;
+  campaignId?: string;
+  brandId?: string;
 }): Promise<CreateRunResult> {
   const { baseUrl, apiKey } = getRunsServiceConfig();
 
@@ -39,9 +41,9 @@ export async function createRun(opts: {
     serviceName: "workflow",
     taskName: opts.taskName,
   };
-  if (opts.workflowName) {
-    body.workflowName = opts.workflowName;
-  }
+  if (opts.workflowName) body.workflowName = opts.workflowName;
+  if (opts.campaignId) body.campaignId = opts.campaignId;
+  if (opts.brandId) body.brandId = opts.brandId;
 
   const res = await fetch(`${baseUrl}/v1/runs`, {
     method: "POST",

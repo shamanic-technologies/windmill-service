@@ -183,8 +183,8 @@ describe("dagToOpenFlow", () => {
     }
   });
 
-  it("auto-injects orgId, userId, runId, and serviceEnvs input_transforms into script modules", () => {
-    const result = dagToOpenFlow(VALID_LINEAR_DAG, "OrgId UserId Inject");
+  it("auto-injects orgId, userId, runId, serviceEnvs, and tracking context into script modules", () => {
+    const result = dagToOpenFlow(VALID_LINEAR_DAG, "Auto Inject");
 
     for (const mod of result.value.modules) {
       if (mod.value.type === "script") {
@@ -207,6 +207,18 @@ describe("dagToOpenFlow", () => {
         expect(transforms.serviceEnvs).toEqual({
           type: "javascript",
           expr: "flow_input.serviceEnvs",
+        });
+        expect(transforms.campaignId).toEqual({
+          type: "javascript",
+          expr: "flow_input.campaignId",
+        });
+        expect(transforms.brandId).toEqual({
+          type: "javascript",
+          expr: "flow_input.brandId",
+        });
+        expect(transforms.workflowName).toEqual({
+          type: "javascript",
+          expr: "flow_input.workflowName",
         });
       }
     }
@@ -339,7 +351,7 @@ describe("dagToOpenFlow", () => {
     const props = (result.schema as Record<string, unknown>).properties as Record<string, unknown>;
     expect(props.orgId).toEqual({ type: "string", description: "Organization identifier" });
     expect(props.userId).toEqual({ type: "string", description: "User identifier" });
-    expect(props.campaignId).toEqual({ type: "string" });
+    expect(props.campaignId).toEqual({ type: "string", description: "Campaign identifier (auto-injected)" });
   });
 
   it("declares flow_input fields from all nodes including onError handler", () => {
