@@ -45,15 +45,20 @@ export async function createRun(opts: {
   if (opts.campaignId) body.campaignId = opts.campaignId;
   if (opts.brandId) body.brandId = opts.brandId;
 
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "x-api-key": apiKey,
+    "x-org-id": opts.orgId,
+    "x-user-id": opts.userId,
+    "x-run-id": opts.parentRunId,
+  };
+  if (opts.campaignId) headers["x-campaign-id"] = opts.campaignId;
+  if (opts.brandId) headers["x-brand-id"] = opts.brandId;
+  if (opts.workflowName) headers["x-workflow-name"] = opts.workflowName;
+
   const res = await fetch(`${baseUrl}/v1/runs`, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": apiKey,
-      "x-org-id": opts.orgId,
-      "x-user-id": opts.userId,
-      "x-run-id": opts.parentRunId,
-    },
+    headers,
     body: JSON.stringify(body),
   });
 

@@ -501,6 +501,15 @@
             "type": "string",
             "nullable": true
           },
+          "brandId": {
+            "type": "string",
+            "nullable": true
+          },
+          "workflowName": {
+            "type": "string",
+            "nullable": true,
+            "description": "Name of the workflow that was executed."
+          },
           "subrequestId": {
             "type": "string",
             "nullable": true
@@ -557,6 +566,8 @@
           "workflowId",
           "orgId",
           "campaignId",
+          "brandId",
+          "workflowName",
           "subrequestId",
           "userId",
           "runId",
@@ -1050,6 +1061,36 @@
             "description": "Run ID for tracing across services. Required.",
             "name": "x-run-id",
             "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Campaign ID for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Campaign ID for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-campaign-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Brand ID for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Brand ID for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-brand-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Workflow name for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Workflow name for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-workflow-name",
+            "in": "header"
           }
         ],
         "requestBody": {
@@ -1204,6 +1245,36 @@
             "description": "Run ID for tracing across services. Required.",
             "name": "x-run-id",
             "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Campaign ID for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Campaign ID for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-campaign-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Brand ID for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Brand ID for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-brand-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Workflow name for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Workflow name for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-workflow-name",
+            "in": "header"
           }
         ],
         "responses": {
@@ -1281,6 +1352,36 @@
             "description": "Run ID for tracing across services. Required.",
             "name": "x-run-id",
             "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Campaign ID for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Campaign ID for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-campaign-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Brand ID for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Brand ID for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-brand-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Workflow name for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Workflow name for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-workflow-name",
+            "in": "header"
           }
         ],
         "responses": {
@@ -1354,6 +1455,36 @@
             "required": true,
             "description": "Run ID for tracing across services. Required.",
             "name": "x-run-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Campaign ID for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Campaign ID for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-campaign-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Brand ID for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Brand ID for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-brand-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Workflow name for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Workflow name for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-workflow-name",
             "in": "header"
           }
         ],
@@ -1439,6 +1570,36 @@
             "description": "Run ID for tracing across services. Required.",
             "name": "x-run-id",
             "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Campaign ID for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Campaign ID for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-campaign-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Brand ID for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Brand ID for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-brand-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Workflow name for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Workflow name for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-workflow-name",
+            "in": "header"
           }
         ],
         "responses": {
@@ -1513,6 +1674,36 @@
             "required": true,
             "description": "Run ID for tracing across services. Required.",
             "name": "x-run-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Campaign ID for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Campaign ID for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-campaign-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Brand ID for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Brand ID for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-brand-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Workflow name for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Workflow name for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-workflow-name",
             "in": "header"
           }
         ],
@@ -1600,6 +1791,36 @@
             "description": "Run ID for tracing across services. Required.",
             "name": "x-run-id",
             "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Campaign ID for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Campaign ID for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-campaign-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Brand ID for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Brand ID for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-brand-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Workflow name for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Workflow name for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-workflow-name",
+            "in": "header"
           }
         ],
         "responses": {
@@ -1665,6 +1886,36 @@
             "required": true,
             "description": "Run ID for tracing across services. Required.",
             "name": "x-run-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Campaign ID for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Campaign ID for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-campaign-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Brand ID for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Brand ID for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-brand-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Workflow name for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Workflow name for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-workflow-name",
             "in": "header"
           }
         ],
@@ -1743,6 +1994,36 @@
             "description": "Run ID for tracing across services. Required.",
             "name": "x-run-id",
             "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Campaign ID for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Campaign ID for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-campaign-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Brand ID for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Brand ID for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-brand-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Workflow name for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Workflow name for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-workflow-name",
+            "in": "header"
           }
         ],
         "responses": {
@@ -1809,6 +2090,36 @@
             "required": true,
             "description": "Run ID for tracing across services. Required.",
             "name": "x-run-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Campaign ID for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Campaign ID for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-campaign-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Brand ID for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Brand ID for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-brand-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Workflow name for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Workflow name for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-workflow-name",
             "in": "header"
           }
         ],
@@ -1910,6 +2221,36 @@
             "description": "Run ID for tracing across services. Required.",
             "name": "x-run-id",
             "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Campaign ID for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Campaign ID for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-campaign-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Brand ID for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Brand ID for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-brand-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Workflow name for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Workflow name for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-workflow-name",
+            "in": "header"
           }
         ],
         "responses": {
@@ -1987,6 +2328,36 @@
             "description": "Run ID for tracing across services. Required.",
             "name": "x-run-id",
             "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Campaign ID for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Campaign ID for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-campaign-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Brand ID for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Brand ID for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-brand-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Workflow name for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Workflow name for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-workflow-name",
+            "in": "header"
           }
         ],
         "responses": {
@@ -2044,6 +2415,36 @@
             "required": true,
             "description": "Run ID for tracing across services. Required.",
             "name": "x-run-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Campaign ID for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Campaign ID for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-campaign-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Brand ID for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Brand ID for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-brand-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Workflow name for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Workflow name for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-workflow-name",
             "in": "header"
           }
         ],
@@ -2122,6 +2523,36 @@
             "required": true,
             "description": "Run ID for tracing across services. Required.",
             "name": "x-run-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Campaign ID for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Campaign ID for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-campaign-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Brand ID for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Brand ID for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-brand-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Workflow name for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Workflow name for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-workflow-name",
             "in": "header"
           }
         ],
@@ -2278,6 +2709,36 @@
             "description": "Run ID for tracing across services. Required.",
             "name": "x-run-id",
             "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Campaign ID for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Campaign ID for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-campaign-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Brand ID for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Brand ID for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-brand-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Workflow name for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Workflow name for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-workflow-name",
+            "in": "header"
           }
         ],
         "responses": {
@@ -2373,6 +2834,36 @@
             "required": true,
             "description": "Run ID for tracing across services. Required.",
             "name": "x-run-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Campaign ID for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Campaign ID for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-campaign-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Brand ID for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Brand ID for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-brand-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Workflow name for tracking. Optional — auto-injected by workflow-service on all downstream calls."
+            },
+            "required": false,
+            "description": "Workflow name for tracking. Optional — auto-injected by workflow-service on all downstream calls.",
+            "name": "x-workflow-name",
             "in": "header"
           }
         ],

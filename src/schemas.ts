@@ -187,6 +187,8 @@ export const WorkflowRunResponseSchema = z
     workflowId: z.string().uuid().nullable(),
     orgId: z.string(),
     campaignId: z.string().nullable(),
+    brandId: z.string().nullable(),
+    workflowName: z.string().nullable().describe("Name of the workflow that was executed."),
     subrequestId: z.string().nullable(),
     userId: z.string().nullable().describe("User ID from the execution context."),
     runId: z.string().nullable().describe("Runs-service run ID for this execution (auto-created)."),
@@ -445,6 +447,9 @@ const IdentityHeaders = z.object({
   "x-org-id": z.string().describe("Internal org UUID (from client-service). Required."),
   "x-user-id": z.string().describe("Internal user UUID (from client-service). Required."),
   "x-run-id": z.string().describe("Run ID for tracing across services. Required."),
+  "x-campaign-id": z.string().optional().describe("Campaign ID for tracking. Optional — auto-injected by workflow-service on all downstream calls."),
+  "x-brand-id": z.string().optional().describe("Brand ID for tracking. Optional — auto-injected by workflow-service on all downstream calls."),
+  "x-workflow-name": z.string().optional().describe("Workflow name for tracking. Optional — auto-injected by workflow-service on all downstream calls."),
 });
 
 // --- Register Paths ---

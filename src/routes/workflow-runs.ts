@@ -106,9 +106,10 @@ router.post(
       const userId = res.locals.userId as string;
       const callerRunId = res.locals.runId as string;
 
-      // Extract tracking context from inputs (campaign workflows always pass these)
-      const campaignId = body.inputs?.campaignId as string | undefined;
-      const brandId = body.inputs?.brandId as string | undefined;
+      // Extract tracking context: prefer request body inputs, fall back to headers
+      const campaignId = (body.inputs?.campaignId as string | undefined) ?? (res.locals.campaignId as string | undefined);
+      const brandId = (body.inputs?.brandId as string | undefined) ?? (res.locals.brandId as string | undefined);
+      const headerWorkflowName = res.locals.workflowName as string | undefined;
 
       // Create a child run in runs-service (links to caller's run via parentRunId)
       let ownRunId: string | null = null;
@@ -134,7 +135,7 @@ router.post(
       const client = getWindmillClient();
       if (client) {
         try {
-          const flowInputs = { ...body.inputs, orgId, userId, runId: ownRunId, workflowName: workflow.name, serviceEnvs: collectServiceEnvs() };
+          const flowInputs = { ...body.inputs, orgId, userId, runId: ownRunId, workflowName: workflow.name, campaignId, brandId, serviceEnvs: collectServiceEnvs() };
           windmillJobId = await client.runFlow(
             workflow.windmillFlowPath,
             flowInputs
@@ -152,15 +153,16 @@ router.post(
       }
 
       // Create workflow run in DB
-      // Prefer campaignId/subrequestId from caller inputs over workflow record
-      // (workflow record values are null for deployed workflows; callers pass them at runtime)
+      // Prefer resolved campaignId/brandId (from inputs or headers) over workflow record
       const [run] = await db
         .insert(workflowRuns)
         .values({
           workflowId: workflow.id,
           orgId,
           userId,
-          campaignId: (body.inputs?.campaignId as string | undefined) ?? workflow.campaignId,
+          campaignId: campaignId ?? workflow.campaignId,
+          brandId: brandId ?? workflow.brandId,
+          workflowName: workflow.name,
           subrequestId: (body.inputs?.subrequestId as string | undefined) ?? workflow.subrequestId,
           runId: ownRunId,
           windmillJobId,
@@ -231,9 +233,9 @@ router.post("/workflows/:id/execute", requireApiKey, async (req, res) => {
     const executeUserId = res.locals.userId as string;
     const callerRunId = res.locals.runId as string;
 
-    // Extract tracking context from inputs
-    const execCampaignId = body.inputs?.campaignId as string | undefined;
-    const execBrandId = body.inputs?.brandId as string | undefined;
+    // Extract tracking context: prefer request body inputs, fall back to headers
+    const execCampaignId = (body.inputs?.campaignId as string | undefined) ?? (res.locals.campaignId as string | undefined);
+    const execBrandId = (body.inputs?.brandId as string | undefined) ?? (res.locals.brandId as string | undefined);
 
     // Create a child run in runs-service (links to caller's run via parentRunId)
     let ownRunId: string | null = null;
@@ -259,7 +261,7 @@ router.post("/workflows/:id/execute", requireApiKey, async (req, res) => {
     const client = getWindmillClient();
     if (client) {
       try {
-        const flowInputs = { ...body.inputs, orgId, userId: executeUserId, runId: ownRunId, workflowName: workflow.name, serviceEnvs: collectServiceEnvs() };
+        const flowInputs = { ...body.inputs, orgId, userId: executeUserId, runId: ownRunId, workflowName: workflow.name, campaignId: execCampaignId, brandId: execBrandId, serviceEnvs: collectServiceEnvs() };
         windmillJobId = await client.runFlow(
           workflow.windmillFlowPath,
           flowInputs
@@ -274,14 +276,16 @@ router.post("/workflows/:id/execute", requireApiKey, async (req, res) => {
     }
 
     // Create workflow run in DB
-    // Prefer campaignId/subrequestId from caller inputs over workflow record
+    // Prefer resolved campaignId/brandId (from inputs or headers) over workflow record
     const [run] = await db
       .insert(workflowRuns)
       .values({
         workflowId: workflow.id,
         orgId,
         userId: executeUserId,
-        campaignId: (body.inputs?.campaignId as string | undefined) ?? workflow.campaignId,
+        campaignId: execCampaignId ?? workflow.campaignId,
+        brandId: execBrandId ?? workflow.brandId,
+        workflowName: workflow.name,
         subrequestId: (body.inputs?.subrequestId as string | undefined) ?? workflow.subrequestId,
         runId: ownRunId,
         windmillJobId,

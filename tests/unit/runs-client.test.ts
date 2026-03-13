@@ -81,7 +81,7 @@ describe("createRun", () => {
     );
   });
 
-  it("includes campaignId and brandId in body when provided", async () => {
+  it("includes campaignId and brandId in body and forwards tracking headers when provided", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue({
@@ -103,6 +103,11 @@ describe("createRun", () => {
     expect(fetch).toHaveBeenCalledWith(
       "http://localhost:5000/v1/runs",
       expect.objectContaining({
+        headers: expect.objectContaining({
+          "x-campaign-id": "camp-123",
+          "x-brand-id": "brand-456",
+          "x-workflow-name": "sales-email-cold-outreach",
+        }),
         body: JSON.stringify({
           serviceName: "workflow",
           taskName: "execute-workflow",
@@ -112,6 +117,28 @@ describe("createRun", () => {
         }),
       })
     );
+  });
+
+  it("does not send tracking headers when campaignId/brandId are not provided", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ id: "new-run-no-tracking" }),
+      })
+    );
+
+    await createRun({
+      parentRunId: "caller-run-1",
+      orgId: "org-1",
+      userId: "user-1",
+      taskName: "execute-workflow",
+    });
+
+    const calledHeaders = (fetch as ReturnType<typeof vi.fn>).mock.calls[0][1].headers;
+    expect(calledHeaders).not.toHaveProperty("x-campaign-id");
+    expect(calledHeaders).not.toHaveProperty("x-brand-id");
+    expect(calledHeaders).not.toHaveProperty("x-workflow-name");
   });
 
   it("does not send orgId, userId, or parentRunId in request body", async () => {
