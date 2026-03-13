@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { workflows, workflowRuns } from "../db/schema.js";
 import { requireApiKey } from "../middleware/auth.js";
@@ -103,6 +103,33 @@ router.post(
         return;
       }
 
+      // Concurrency guard: reject if there's already an active run for this campaign+workflow
+      const campaignId = (body.inputs?.campaignId as string | undefined) ?? workflow.campaignId;
+      if (campaignId) {
+        const [activeRun] = await db
+          .select({ id: workflowRuns.id })
+          .from(workflowRuns)
+          .where(
+            and(
+              eq(workflowRuns.campaignId, campaignId),
+              eq(workflowRuns.workflowId, workflow.id),
+              inArray(workflowRuns.status, ["queued", "running"]),
+            )
+          )
+          .limit(1);
+
+        if (activeRun) {
+          console.warn(
+            `[workflow-service] Rejecting duplicate execution: workflow="${workflow.name}" campaign=${campaignId} already has active run ${activeRun.id}`,
+          );
+          res.status(409).json({
+            error: "A run is already active for this campaign",
+            activeRunId: activeRun.id,
+          });
+          return;
+        }
+      }
+
       const userId = res.locals.userId as string;
       const callerRunId = res.locals.runId as string;
 
@@ -146,15 +173,13 @@ router.post(
       }
 
       // Create workflow run in DB
-      // Prefer campaignId/subrequestId from caller inputs over workflow record
-      // (workflow record values are null for deployed workflows; callers pass them at runtime)
       const [run] = await db
         .insert(workflowRuns)
         .values({
           workflowId: workflow.id,
           orgId,
           userId,
-          campaignId: (body.inputs?.campaignId as string | undefined) ?? workflow.campaignId,
+          campaignId,
           subrequestId: (body.inputs?.subrequestId as string | undefined) ?? workflow.subrequestId,
           runId: ownRunId,
           windmillJobId,
@@ -222,6 +247,33 @@ router.post("/workflows/:id/execute", requireApiKey, async (req, res) => {
       return;
     }
 
+    // Concurrency guard: reject if there's already an active run for this campaign+workflow
+    const campaignId = (body.inputs?.campaignId as string | undefined) ?? workflow.campaignId;
+    if (campaignId) {
+      const [activeRun] = await db
+        .select({ id: workflowRuns.id })
+        .from(workflowRuns)
+        .where(
+          and(
+            eq(workflowRuns.campaignId, campaignId),
+            eq(workflowRuns.workflowId, workflow.id),
+            inArray(workflowRuns.status, ["queued", "running"]),
+          )
+        )
+        .limit(1);
+
+      if (activeRun) {
+        console.warn(
+          `[workflow-service] Rejecting duplicate execution: workflow="${workflow.name}" campaign=${campaignId} already has active run ${activeRun.id}`,
+        );
+        res.status(409).json({
+          error: "A run is already active for this campaign",
+          activeRunId: activeRun.id,
+        });
+        return;
+      }
+    }
+
     const executeUserId = res.locals.userId as string;
     const callerRunId = res.locals.runId as string;
 
@@ -262,14 +314,13 @@ router.post("/workflows/:id/execute", requireApiKey, async (req, res) => {
     }
 
     // Create workflow run in DB
-    // Prefer campaignId/subrequestId from caller inputs over workflow record
     const [run] = await db
       .insert(workflowRuns)
       .values({
         workflowId: workflow.id,
         orgId,
         userId: executeUserId,
-        campaignId: (body.inputs?.campaignId as string | undefined) ?? workflow.campaignId,
+        campaignId,
         subrequestId: (body.inputs?.subrequestId as string | undefined) ?? workflow.subrequestId,
         runId: ownRunId,
         windmillJobId,
