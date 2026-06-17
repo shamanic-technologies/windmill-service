@@ -119,6 +119,47 @@ describe("createRun", () => {
     );
   });
 
+  it("forwards attribution context as headers only", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({ id: "new-run-attributed" }),
+      })
+    );
+
+    await createRun({
+      parentRunId: "caller-run-1",
+      orgId: "org-1",
+      userId: "user-1",
+      taskName: "execute-workflow",
+      attributionContext: {
+        profileId: "profile-real-1",
+        personaId: "persona-real-1",
+        goalId: "goal-real-1",
+        goalSlug: "signups",
+        optimizationGoal: "signups",
+      },
+    });
+
+    expect(fetch).toHaveBeenCalledWith(
+      "http://localhost:5000/v1/runs",
+      expect.objectContaining({
+        headers: expect.objectContaining({
+          "x-profile-id": "profile-real-1",
+          "x-persona-id": "persona-real-1",
+          "x-goal-id": "goal-real-1",
+          "x-goal-slug": "signups",
+          "x-optimization-goal": "signups",
+        }),
+        body: JSON.stringify({
+          serviceName: "workflow",
+          taskName: "execute-workflow",
+        }),
+      })
+    );
+  });
+
   it("does not send tracking headers when campaignId/brandId are not provided", async () => {
     vi.stubGlobal(
       "fetch",

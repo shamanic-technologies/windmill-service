@@ -38,6 +38,11 @@ describe("traceEvent", () => {
         "x-campaign-id": "camp-1",
         "x-workflow-slug": "test-workflow",
         "x-feature-slug": "cold-outreach",
+        "x-profile-id": "profile-real-1",
+        "x-persona-id": "persona-real-1",
+        "x-goal-id": "goal-real-1",
+        "x-goal-slug": "signups",
+        "x-optimization-goal": "signups",
       }
     );
 
@@ -54,6 +59,11 @@ describe("traceEvent", () => {
           "x-campaign-id": "camp-1",
           "x-workflow-slug": "test-workflow",
           "x-feature-slug": "cold-outreach",
+          "x-profile-id": "profile-real-1",
+          "x-persona-id": "persona-real-1",
+          "x-goal-id": "goal-real-1",
+          "x-goal-slug": "signups",
+          "x-optimization-goal": "signups",
         }),
         body: JSON.stringify({
           service: "workflow-service",

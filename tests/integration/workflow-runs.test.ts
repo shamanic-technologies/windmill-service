@@ -315,6 +315,92 @@ describe("POST /workflows/:id/execute", () => {
     );
   });
 
+  it("preserves tagged campaign attribution through run creation and Windmill inputs", async () => {
+    mockWorkflows.push({
+      id: WF_ID,
+      orgId: "org-1",
+      workflowSlug: "test-flow",
+      workflowName: "Test Flow",
+      workflowDynastySlug: "test-flow",
+      workflowDynastyName: "Test Flow",
+      version: 1,
+      windmillFlowPath: "f/workflows/org_1/test_flow",
+      windmillWorkspace: "prod",
+      dag: VALID_LINEAR_DAG,
+    });
+
+    const attributionContext = {
+      profileId: "profile-real-1",
+      personaId: "persona-real-1",
+      goalId: "goal-real-1",
+      goalSlug: "signups",
+      optimizationGoal: "signups",
+      source: { service: "campaign-service" },
+    };
+    const expectedAttribution = {
+      ...attributionContext,
+      campaignId: "camp-1",
+      featureSlug: "test-feature",
+      brandIds: ["brand-1"],
+      brandId: "brand-1",
+    };
+
+    const res = await request
+      .post(`/workflows/${WF_ID}/execute`)
+      .set(AUTH)
+      .send({ attributionContext, inputs: { email: "user@test.com" } });
+
+    expect(res.status).toBe(201);
+    expect(res.body.attributionContext).toEqual(expectedAttribution);
+    expect(mockRuns[0].attributionContext).toEqual(expectedAttribution);
+    expect(mockCreateRun).toHaveBeenCalledWith(expect.objectContaining({
+      attributionContext: expectedAttribution,
+    }));
+    expect(mockRunFlow).toHaveBeenCalledWith(
+      "f/workflows/org_1/test_flow",
+      expect.objectContaining({
+        attributionContext: expectedAttribution,
+        profileId: "profile-real-1",
+        personaId: "persona-real-1",
+        goalId: "goal-real-1",
+        goalSlug: "signups",
+        optimizationGoal: "signups",
+      }),
+    );
+  });
+
+  it("leaves untagged executions untagged", async () => {
+    mockWorkflows.push({
+      id: WF_ID,
+      orgId: "org-1",
+      workflowSlug: "test-flow",
+      workflowName: "Test Flow",
+      workflowDynastySlug: "test-flow",
+      workflowDynastyName: "Test Flow",
+      version: 1,
+      windmillFlowPath: "f/workflows/org_1/test_flow",
+      windmillWorkspace: "prod",
+      dag: VALID_LINEAR_DAG,
+    });
+
+    const res = await request
+      .post(`/workflows/${WF_ID}/execute`)
+      .set(AUTH)
+      .send({ inputs: { email: "user@test.com" } });
+
+    expect(res.status).toBe(201);
+    expect(res.body.attributionContext).toBeNull();
+    expect(mockRuns[0].attributionContext).toBeNull();
+    expect(mockCreateRun.mock.calls[0][0]).not.toHaveProperty("attributionContext");
+    const flowInputs = mockRunFlow.mock.calls[0][1];
+    expect(flowInputs).not.toHaveProperty("attributionContext");
+    expect(flowInputs).not.toHaveProperty("profileId");
+    expect(flowInputs).not.toHaveProperty("personaId");
+    expect(flowInputs).not.toHaveProperty("goalId");
+    expect(flowInputs).not.toHaveProperty("goalSlug");
+    expect(flowInputs).not.toHaveProperty("optimizationGoal");
+  });
+
   it("uses x-org-id header (not workflow.orgId) for run attribution", async () => {
     mockWorkflows.push({
       id: WF_ID,
@@ -1061,13 +1147,28 @@ describe("GET /workflow-runs/:id", () => {
   });
 
   it("returns a completed run after polling Windmill", async () => {
+    const attributionContext = {
+      brandId: "brand-1",
+      brandIds: ["brand-1"],
+      campaignId: "camp-1",
+      featureSlug: "test-feature",
+      profileId: "profile-real-1",
+      personaId: "persona-real-1",
+      goalId: "goal-real-1",
+      goalSlug: "signups",
+    };
     mockRuns.push({
       id: RUN_1_ID,
       workflowId: WF_ID,
       orgId: "org-1",
+      userId: "user-1",
+      runId: "run-own-poll",
+      campaignId: "camp-1",
+      featureSlug: "test-feature",
       status: "running",
       windmillJobId: "job-uuid-123",
       windmillWorkspace: "prod",
+      attributionContext,
       inputs: {},
       result: null,
       error: null,
@@ -1081,6 +1182,7 @@ describe("GET /workflow-runs/:id", () => {
     expect(res.status).toBe(200);
     expect(res.body.status).toBe("completed");
     expect(res.body.result).toEqual({ output: "done" });
+    expect(res.body.attributionContext).toEqual(attributionContext);
   });
 });
 

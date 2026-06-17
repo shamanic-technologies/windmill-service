@@ -22,6 +22,11 @@ export async function main(
   brandId?: string,
   workflowSlug?: string,
   featureSlug?: string,
+  profileId?: string,
+  personaId?: string,
+  goalId?: string,
+  goalSlug?: string,
+  optimizationGoal?: string,
 ) {
   if (!service) {
     throw new Error(
@@ -75,6 +80,11 @@ export async function main(
   if (brandId) reqHeaders["x-brand-id"] = brandId;
   if (workflowSlug) reqHeaders["x-workflow-slug"] = workflowSlug;
   if (featureSlug) reqHeaders["x-feature-slug"] = featureSlug;
+  if (profileId) reqHeaders["x-profile-id"] = profileId;
+  if (personaId) reqHeaders["x-persona-id"] = personaId;
+  if (goalId) reqHeaders["x-goal-id"] = goalId;
+  if (goalSlug) reqHeaders["x-goal-slug"] = goalSlug;
+  if (optimizationGoal) reqHeaders["x-optimization-goal"] = optimizationGoal;
   // Caller-supplied headers can override identity headers
   if (headers) Object.assign(reqHeaders, headers);
   // Resolved x-api-key always takes precedence

@@ -80,6 +80,12 @@ export function dagToOpenFlow(dag: DAG, name: string): OpenFlow {
     brandId: { type: "string", description: "Brand identifier (auto-injected)" },
     workflowSlug: { type: "string", description: "Workflow slug (auto-injected)" },
     featureSlug: { type: "string", description: "Feature slug from features-service (auto-injected)" },
+    attributionContext: { type: "object", description: "Optional campaign attribution context supplied at execution time" },
+    profileId: { type: "string", description: "Optional profile identifier from attribution context" },
+    personaId: { type: "string", description: "Optional persona identifier from attribution context" },
+    goalId: { type: "string", description: "Optional goal identifier from attribution context" },
+    goalSlug: { type: "string", description: "Optional goal slug from attribution context" },
+    optimizationGoal: { type: "string", description: "Optional active optimization goal from attribution context" },
   };
   for (const node of dag.nodes) {
     if (!node.inputMapping) continue;
@@ -453,6 +459,12 @@ function nodeToModule(node: DAGNode, dag: DAG): FlowModule | null {
     brandId: "flow_input.brandId",
     workflowSlug: "flow_input.workflowSlug",
     featureSlug: "flow_input.featureSlug",
+    attributionContext: "flow_input.attributionContext",
+    profileId: "flow_input.profileId",
+    personaId: "flow_input.personaId",
+    goalId: "flow_input.goalId",
+    goalSlug: "flow_input.goalSlug",
+    optimizationGoal: "flow_input.optimizationGoal",
   };
   for (const [key, expr] of Object.entries(autoInjects)) {
     if (!inputTransforms[key]) {
@@ -501,6 +513,12 @@ function buildFailureModule(node: DAGNode): FlowModule | null {
     brandId: "flow_input.brandId",
     workflowSlug: "flow_input.workflowSlug",
     featureSlug: "flow_input.featureSlug",
+    attributionContext: "flow_input.attributionContext",
+    profileId: "flow_input.profileId",
+    personaId: "flow_input.personaId",
+    goalId: "flow_input.goalId",
+    goalSlug: "flow_input.goalSlug",
+    optimizationGoal: "flow_input.optimizationGoal",
   };
   for (const [key, expr] of Object.entries(failureAutoInjects)) {
     if (!inputTransforms[key]) {

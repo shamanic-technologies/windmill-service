@@ -1023,6 +1023,55 @@
           "fieldIssues"
         ]
       },
+      "NullableCampaignAttributionContext": {
+        "type": "object",
+        "nullable": true,
+        "properties": {
+          "brandId": {
+            "type": "string",
+            "description": "Single brand ID for this attributed execution when the campaign is single-brand."
+          },
+          "brandIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Brand IDs for this attributed execution. Copied from the execution brand header when attribution is present."
+          },
+          "campaignId": {
+            "type": "string",
+            "description": "Campaign ID copied from the execution header when attribution is present."
+          },
+          "featureSlug": {
+            "type": "string",
+            "description": "Feature slug copied from the execution header when attribution is present."
+          },
+          "profileId": {
+            "type": "string",
+            "description": "Brand/profile version ID supplied by the caller. Workflow-service never infers this value."
+          },
+          "personaId": {
+            "type": "string",
+            "description": "Customer persona ID supplied by the caller. Workflow-service never infers this value."
+          },
+          "goalId": {
+            "type": "string",
+            "description": "Goal ID supplied by the caller. Workflow-service never infers this value."
+          },
+          "goalSlug": {
+            "type": "string",
+            "description": "Goal slug supplied by the caller. Workflow-service never infers this value."
+          },
+          "optimizationGoal": {
+            "type": "string",
+            "description": "Active optimization goal supplied by the caller, e.g. signups or sales_meetings."
+          }
+        },
+        "additionalProperties": {
+          "nullable": true
+        },
+        "description": "Literal attribution context preserved from execution, or null when the execution was untagged."
+      },
       "WorkflowRunResponse": {
         "type": "object",
         "properties": {
@@ -1102,6 +1151,9 @@
             "nullable": true,
             "description": "Conflict policy used when this run was reserved."
           },
+          "attributionContext": {
+            "$ref": "#/components/schemas/NullableCampaignAttributionContext"
+          },
           "inputs": {
             "nullable": true,
             "description": "The inputs that were passed at execution time."
@@ -1176,6 +1228,7 @@
           "executionScope",
           "executionKey",
           "conflictPolicy",
+          "attributionContext",
           "error",
           "reservedAt",
           "dispatchStartedAt",
@@ -1206,6 +1259,54 @@
           "workflowRun"
         ]
       },
+      "CampaignAttributionContext": {
+        "type": "object",
+        "properties": {
+          "brandId": {
+            "type": "string",
+            "description": "Single brand ID for this attributed execution when the campaign is single-brand."
+          },
+          "brandIds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Brand IDs for this attributed execution. Copied from the execution brand header when attribution is present."
+          },
+          "campaignId": {
+            "type": "string",
+            "description": "Campaign ID copied from the execution header when attribution is present."
+          },
+          "featureSlug": {
+            "type": "string",
+            "description": "Feature slug copied from the execution header when attribution is present."
+          },
+          "profileId": {
+            "type": "string",
+            "description": "Brand/profile version ID supplied by the caller. Workflow-service never infers this value."
+          },
+          "personaId": {
+            "type": "string",
+            "description": "Customer persona ID supplied by the caller. Workflow-service never infers this value."
+          },
+          "goalId": {
+            "type": "string",
+            "description": "Goal ID supplied by the caller. Workflow-service never infers this value."
+          },
+          "goalSlug": {
+            "type": "string",
+            "description": "Goal slug supplied by the caller. Workflow-service never infers this value."
+          },
+          "optimizationGoal": {
+            "type": "string",
+            "description": "Active optimization goal supplied by the caller, e.g. signups or sales_meetings."
+          }
+        },
+        "additionalProperties": {
+          "nullable": true
+        },
+        "description": "Optional real campaign attribution context to preserve on the workflow run and expose to nodes via flow_input.attributionContext. Workflow-service copies this literally and never derives persona/profile/goal IDs from names or totals."
+      },
       "ExecuteWorkflowRequest": {
         "type": "object",
         "properties": {
@@ -1216,6 +1317,9 @@
               "reject"
             ],
             "description": "How to handle an already-active campaign-scoped execution for the same org + campaign. When omitted, workflow-service returns the existing active execution."
+          },
+          "attributionContext": {
+            "$ref": "#/components/schemas/CampaignAttributionContext"
           },
           "inputs": {
             "type": "object",
@@ -1521,6 +1625,9 @@
               "reject"
             ],
             "description": "How to handle an already-active campaign-scoped execution for the same org + campaign. When omitted, workflow-service returns the existing active execution."
+          },
+          "attributionContext": {
+            "$ref": "#/components/schemas/CampaignAttributionContext"
           },
           "inputs": {
             "type": "object",
@@ -2917,6 +3024,56 @@
             "description": "Feature slug. Required on execute endpoints — propagated to all downstream http.call nodes.",
             "name": "x-feature-slug",
             "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Optional profile ID for attribution. Propagated to downstream http.call nodes only when supplied."
+            },
+            "required": false,
+            "description": "Optional profile ID for attribution. Propagated to downstream http.call nodes only when supplied.",
+            "name": "x-profile-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Optional persona ID for attribution. Propagated to downstream http.call nodes only when supplied."
+            },
+            "required": false,
+            "description": "Optional persona ID for attribution. Propagated to downstream http.call nodes only when supplied.",
+            "name": "x-persona-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Optional goal ID for attribution. Propagated to downstream http.call nodes only when supplied."
+            },
+            "required": false,
+            "description": "Optional goal ID for attribution. Propagated to downstream http.call nodes only when supplied.",
+            "name": "x-goal-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Optional goal slug for attribution. Propagated to downstream http.call nodes only when supplied."
+            },
+            "required": false,
+            "description": "Optional goal slug for attribution. Propagated to downstream http.call nodes only when supplied.",
+            "name": "x-goal-slug",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Optional active optimization goal for attribution. Propagated to downstream http.call nodes only when supplied."
+            },
+            "required": false,
+            "description": "Optional active optimization goal for attribution. Propagated to downstream http.call nodes only when supplied.",
+            "name": "x-optimization-goal",
+            "in": "header"
           }
         ],
         "requestBody": {
@@ -3903,6 +4060,56 @@
             "required": true,
             "description": "Feature slug. Required on execute endpoints — propagated to all downstream http.call nodes.",
             "name": "x-feature-slug",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Optional profile ID for attribution. Propagated to downstream http.call nodes only when supplied."
+            },
+            "required": false,
+            "description": "Optional profile ID for attribution. Propagated to downstream http.call nodes only when supplied.",
+            "name": "x-profile-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Optional persona ID for attribution. Propagated to downstream http.call nodes only when supplied."
+            },
+            "required": false,
+            "description": "Optional persona ID for attribution. Propagated to downstream http.call nodes only when supplied.",
+            "name": "x-persona-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Optional goal ID for attribution. Propagated to downstream http.call nodes only when supplied."
+            },
+            "required": false,
+            "description": "Optional goal ID for attribution. Propagated to downstream http.call nodes only when supplied.",
+            "name": "x-goal-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Optional goal slug for attribution. Propagated to downstream http.call nodes only when supplied."
+            },
+            "required": false,
+            "description": "Optional goal slug for attribution. Propagated to downstream http.call nodes only when supplied.",
+            "name": "x-goal-slug",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Optional active optimization goal for attribution. Propagated to downstream http.call nodes only when supplied."
+            },
+            "required": false,
+            "description": "Optional active optimization goal for attribution. Propagated to downstream http.call nodes only when supplied.",
+            "name": "x-optimization-goal",
             "in": "header"
           }
         ],

@@ -220,6 +220,34 @@ describe("dagToOpenFlow", () => {
           type: "javascript",
           expr: "flow_input.workflowSlug",
         });
+        expect(transforms.featureSlug).toEqual({
+          type: "javascript",
+          expr: "flow_input.featureSlug",
+        });
+        expect(transforms.attributionContext).toEqual({
+          type: "javascript",
+          expr: "flow_input.attributionContext",
+        });
+        expect(transforms.profileId).toEqual({
+          type: "javascript",
+          expr: "flow_input.profileId",
+        });
+        expect(transforms.personaId).toEqual({
+          type: "javascript",
+          expr: "flow_input.personaId",
+        });
+        expect(transforms.goalId).toEqual({
+          type: "javascript",
+          expr: "flow_input.goalId",
+        });
+        expect(transforms.goalSlug).toEqual({
+          type: "javascript",
+          expr: "flow_input.goalSlug",
+        });
+        expect(transforms.optimizationGoal).toEqual({
+          type: "javascript",
+          expr: "flow_input.optimizationGoal",
+        });
       }
     }
   });
@@ -257,6 +285,8 @@ describe("dagToOpenFlow", () => {
     expect(props.userId).toEqual({ type: "string", description: "User identifier" });
     expect(props.runId).toEqual({ type: "string", description: "Runs-service run ID for this execution" });
     expect(props.serviceEnvs).toEqual({ type: "object", description: "Service URLs and API keys injected by workflow-service" });
+    expect(props.attributionContext).toEqual({ type: "object", description: "Optional campaign attribution context supplied at execution time" });
+    expect(props.personaId).toEqual({ type: "string", description: "Optional persona identifier from attribution context" });
   });
 
   it("generates valid OpenFlow schema structure", () => {

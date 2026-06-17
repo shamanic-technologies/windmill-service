@@ -14,6 +14,10 @@ import { ExecuteWorkflowSchema, ExecuteByNameSchema } from "../schemas.js";
 import { parseWindmillError } from "../lib/error-parser.js";
 import { traceEvent } from "../lib/trace-event.js";
 import {
+  attributionContextToHeaders,
+  buildCampaignAttributionContext,
+} from "../lib/attribution-context.js";
+import {
   attachRunsServiceRun,
   markExecutionDispatchFailed,
   markExecutionDispatched,
@@ -26,6 +30,7 @@ const router = Router();
 function formatRun(r: typeof workflowRuns.$inferSelect) {
   const base = {
     ...r,
+    attributionContext: r.attributionContext ?? null,
     reservedAt: r.reservedAt?.toISOString() ?? null,
     dispatchStartedAt: r.dispatchStartedAt?.toISOString() ?? null,
     startedAt: r.startedAt?.toISOString() ?? null,
@@ -51,6 +56,7 @@ function formatRun(r: typeof workflowRuns.$inferSelect) {
 type WorkflowRow = typeof workflows.$inferSelect;
 type ExecuteBody = {
   inputs?: Record<string, unknown>;
+  attributionContext?: Record<string, unknown>;
   conflictPolicy?: ExecutionConflictPolicy;
 };
 
@@ -70,6 +76,18 @@ async function startWorkflowExecution(params: {
   const campaignId = res.locals.campaignId as string;
   const featureSlug = res.locals.featureSlug as string;
   const conflictPolicy = resolveExecutionConflictPolicy(body.conflictPolicy);
+  const attributionContext = buildCampaignAttributionContext({
+    headers: req.headers,
+    bodyAttributionContext: body.attributionContext,
+    inputs: body.inputs,
+    campaignId,
+    brandIds,
+    featureSlug,
+  });
+  const traceHeaders = {
+    ...req.headers,
+    ...attributionContextToHeaders(attributionContext),
+  };
 
   const reservation = await reserveCampaignExecution({
     database: db,
@@ -80,6 +98,7 @@ async function startWorkflowExecution(params: {
     brandIds,
     featureSlug,
     inputs: body.inputs,
+    attributionContext,
     conflictPolicy,
   });
 
@@ -89,7 +108,7 @@ async function startWorkflowExecution(params: {
       event: "execution-conflict",
       detail: `Active workflow execution already exists for executionKey="${reservation.executionKey}" dbRunId=${reservation.run.id}`,
       data: { executionKey: reservation.executionKey, dbRunId: reservation.run.id, conflictPolicy },
-    }, req.headers).catch(() => {});
+    }, traceHeaders).catch(() => {});
 
     if (conflictPolicy === "reject") {
       res.status(409).json({
@@ -105,7 +124,7 @@ async function startWorkflowExecution(params: {
 
   let ownRunId: string | null = null;
   try {
-    const { runId: newRunId } = await createRun({
+    const createRunInput = {
       parentRunId: callerRunId,
       orgId,
       userId,
@@ -113,7 +132,9 @@ async function startWorkflowExecution(params: {
       workflowSlug: workflow.workflowSlug,
       campaignId,
       brandIdHeader,
-    });
+      ...(attributionContext ? { attributionContext } : {}),
+    };
+    const { runId: newRunId } = await createRun(createRunInput);
     ownRunId = newRunId;
     await attachRunsServiceRun(db, reservation.run.id, ownRunId);
   } catch (err) {
@@ -133,13 +154,33 @@ async function startWorkflowExecution(params: {
     event: traceEventName,
     detail: `Executing workflow slug="${workflow.workflowSlug}" (id=${workflow.id}) for org=${orgId} campaign=${campaignId}`,
     data: { workflowSlug: workflow.workflowSlug, workflowId: workflow.id, orgId, campaignId, featureSlug },
-  }, req.headers).catch(() => {});
+  }, traceHeaders).catch(() => {});
 
   let windmillJobId: string | null = null;
   const client = getWindmillClient();
   if (client) {
     try {
-      const flowInputs = { ...body.inputs, orgId, userId, runId: ownRunId, workflowSlug: workflow.workflowSlug, campaignId, brandId: brandIdHeader, featureSlug, serviceEnvs: collectServiceEnvs() };
+      const attributionFlowInputs: Record<string, unknown> = {};
+      if (attributionContext) {
+        attributionFlowInputs.attributionContext = attributionContext;
+        for (const field of ["profileId", "personaId", "goalId", "goalSlug", "optimizationGoal"] as const) {
+          if (typeof attributionContext[field] === "string") {
+            attributionFlowInputs[field] = attributionContext[field];
+          }
+        }
+      }
+      const flowInputs = {
+        ...body.inputs,
+        orgId,
+        userId,
+        runId: ownRunId,
+        workflowSlug: workflow.workflowSlug,
+        campaignId,
+        brandId: brandIdHeader,
+        featureSlug,
+        ...attributionFlowInputs,
+        serviceEnvs: collectServiceEnvs(),
+      };
       windmillJobId = await client.runFlow(
         workflow.windmillFlowPath as string,
         flowInputs
@@ -150,7 +191,7 @@ async function startWorkflowExecution(params: {
         event: "windmill-dispatch",
         detail: `Dispatched to Windmill: jobId=${windmillJobId} flowPath="${workflow.windmillFlowPath}" inputKeys=${Object.keys(flowInputs).join(",")}`,
         data: { windmillJobId, flowPath: workflow.windmillFlowPath, inputKeys: Object.keys(flowInputs) },
-      }, req.headers).catch(() => {});
+      }, traceHeaders).catch(() => {});
     } catch (err) {
       const keepReservationActive = isAmbiguousWindmillDispatchError(err);
       const errorMessage = err instanceof Error ? err.message : String(err);
@@ -177,7 +218,7 @@ async function startWorkflowExecution(params: {
         level: "error",
         detail: `Windmill dispatch failed (${keepReservationActive ? "ambiguous" : "not-dispatched"}): ${errorMessage}`,
         data: { flowPath: workflow.windmillFlowPath, error: errorMessage, ambiguous: keepReservationActive },
-      }, req.headers).catch(() => {});
+      }, traceHeaders).catch(() => {});
       res
         .status(502)
         .json({
@@ -200,7 +241,7 @@ async function startWorkflowExecution(params: {
     event: "execute-queued",
     detail: `Workflow run queued: dbRunId=${run.id} windmillJobId=${windmillJobId ?? "none"} workflowSlug="${workflow.workflowSlug}"`,
     data: { dbRunId: run.id, windmillJobId, workflowSlug: workflow.workflowSlug },
-  }, req.headers).catch(() => {});
+  }, traceHeaders).catch(() => {});
 
   res.status(201).json(formatRun(run));
 }
@@ -430,7 +471,11 @@ router.get("/workflow-runs/:id", requireApiKey, async (req, res) => {
             .where(eq(workflowRuns.id, run.id))
             .returning();
 
-          traceEvent(run.runId ?? req.params.id, { service: "workflow-service", event: "job-completed", detail: `Run ${run.id} finished: status=${newStatus}, windmillJobId=${run.windmillJobId}` }, req.headers).catch(() => {});
+          const runTraceHeaders = {
+            ...req.headers,
+            ...attributionContextToHeaders(run.attributionContext as Record<string, unknown> | null | undefined),
+          };
+          traceEvent(run.runId ?? req.params.id, { service: "workflow-service", event: "job-completed", detail: `Run ${run.id} finished: status=${newStatus}, windmillJobId=${run.windmillJobId}` }, runTraceHeaders).catch(() => {});
 
           // Close the run in runs-service
           if (run.runId && run.orgId) {
@@ -587,7 +632,11 @@ router.post("/workflow-runs/:id/cancel", requireApiKey, async (req, res) => {
       }
     }
 
-    traceEvent(run.runId ?? req.params.id, { service: "workflow-service", event: "run-cancelled", detail: `Run ${run.id} cancelled by user, windmillJobId=${run.windmillJobId ?? "none"}` }, req.headers).catch(() => {});
+    const runTraceHeaders = {
+      ...req.headers,
+      ...attributionContextToHeaders(run.attributionContext as Record<string, unknown> | null | undefined),
+    };
+    traceEvent(run.runId ?? req.params.id, { service: "workflow-service", event: "run-cancelled", detail: `Run ${run.id} cancelled by user, windmillJobId=${run.windmillJobId ?? "none"}` }, runTraceHeaders).catch(() => {});
 
     const [updated] = await db
       .update(workflowRuns)

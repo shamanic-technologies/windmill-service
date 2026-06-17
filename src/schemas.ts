@@ -354,11 +354,36 @@ export const ValidationResultSchema = z
 
 // --- Workflow Run schemas ---
 
+export const CampaignAttributionContextSchema = z
+  .object({
+    brandId: z.string().optional().describe("Single brand ID for this attributed execution when the campaign is single-brand."),
+    brandIds: z.array(z.string()).optional().describe("Brand IDs for this attributed execution. Copied from the execution brand header when attribution is present."),
+    campaignId: z.string().optional().describe("Campaign ID copied from the execution header when attribution is present."),
+    featureSlug: z.string().optional().describe("Feature slug copied from the execution header when attribution is present."),
+    profileId: z.string().optional().describe("Brand/profile version ID supplied by the caller. Workflow-service never infers this value."),
+    personaId: z.string().optional().describe("Customer persona ID supplied by the caller. Workflow-service never infers this value."),
+    goalId: z.string().optional().describe("Goal ID supplied by the caller. Workflow-service never infers this value."),
+    goalSlug: z.string().optional().describe("Goal slug supplied by the caller. Workflow-service never infers this value."),
+    optimizationGoal: z.string().optional().describe("Active optimization goal supplied by the caller, e.g. signups or sales_meetings."),
+  })
+  .catchall(z.unknown())
+  .describe("Optional literal attribution context for campaign executions. Present only when supplied by the caller; absent executions remain null.")
+  .openapi("CampaignAttributionContext");
+
+const NullableCampaignAttributionContextSchema = CampaignAttributionContextSchema
+  .nullable()
+  .describe("Literal attribution context preserved from execution, or null when the execution was untagged.")
+  .openapi("NullableCampaignAttributionContext");
+
 export const ExecuteWorkflowSchema = z
   .object({
     conflictPolicy: z.enum(["use_existing", "reject"]).optional().describe(
       "How to handle an already-active campaign-scoped execution for the same org + campaign. " +
       "When omitted, workflow-service returns the existing active execution."
+    ),
+    attributionContext: CampaignAttributionContextSchema.optional().describe(
+      "Optional real campaign attribution context to preserve on the workflow run and expose to nodes via flow_input.attributionContext. " +
+      "Workflow-service copies this literally and never derives persona/profile/goal IDs from names or totals."
     ),
     inputs: z.record(z.unknown()).optional().describe(
       "Runtime inputs for the workflow. Accessible in nodes via $ref:flow_input.fieldName."
@@ -394,6 +419,7 @@ export const WorkflowRunResponseSchema = z
     executionScope: z.string().nullable().describe("Business execution scope, e.g. campaign."),
     executionKey: z.string().nullable().describe("Deterministic key used to prevent duplicate active executions."),
     conflictPolicy: z.string().nullable().describe("Conflict policy used when this run was reserved."),
+    attributionContext: NullableCampaignAttributionContextSchema,
     inputs: z.unknown().nullable().describe("The inputs that were passed at execution time."),
     result: z.unknown().nullable().describe("Workflow result (available when status is completed). Contains the output of the last node."),
     error: z.string().nullable().describe("Error message (available when status is failed). Raw Windmill error — use errorSummary for a clean version."),
@@ -438,6 +464,10 @@ export const ExecuteByNameSchema = z
     conflictPolicy: z.enum(["use_existing", "reject"]).optional().describe(
       "How to handle an already-active campaign-scoped execution for the same org + campaign. " +
       "When omitted, workflow-service returns the existing active execution."
+    ),
+    attributionContext: CampaignAttributionContextSchema.optional().describe(
+      "Optional real campaign attribution context to preserve on the workflow run and expose to nodes via flow_input.attributionContext. " +
+      "Workflow-service copies this literally and never derives persona/profile/goal IDs from names or totals."
     ),
     inputs: z.record(z.unknown()).optional().describe(
       "Runtime inputs for the workflow. Accessible in nodes via $ref:flow_input.fieldName."
@@ -750,6 +780,11 @@ const ExecutionHeaders = z.object({
   "x-brand-id": z.string().describe("Brand ID(s) as CSV (e.g. 'uuid1,uuid2'). Required on execute endpoints — propagated to all downstream http.call nodes."),
   "x-workflow-slug": z.string().describe("Workflow slug. Required on execute endpoints — propagated to all downstream http.call nodes."),
   "x-feature-slug": z.string().describe("Feature slug. Required on execute endpoints — propagated to all downstream http.call nodes."),
+  "x-profile-id": z.string().optional().describe("Optional profile ID for attribution. Propagated to downstream http.call nodes only when supplied."),
+  "x-persona-id": z.string().optional().describe("Optional persona ID for attribution. Propagated to downstream http.call nodes only when supplied."),
+  "x-goal-id": z.string().optional().describe("Optional goal ID for attribution. Propagated to downstream http.call nodes only when supplied."),
+  "x-goal-slug": z.string().optional().describe("Optional goal slug for attribution. Propagated to downstream http.call nodes only when supplied."),
+  "x-optimization-goal": z.string().optional().describe("Optional active optimization goal for attribution. Propagated to downstream http.call nodes only when supplied."),
 });
 
 // --- Register Paths ---

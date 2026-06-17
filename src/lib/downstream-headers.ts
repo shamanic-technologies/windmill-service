@@ -14,6 +14,11 @@ const DOWNSTREAM_HEADER_KEYS = [
   "x-campaign-id",
   "x-workflow-slug",
   "x-feature-slug",
+  "x-profile-id",
+  "x-persona-id",
+  "x-goal-id",
+  "x-goal-slug",
+  "x-optimization-goal",
 ] as const;
 
 /** Headers to forward to downstream services. Spread into fetch headers. */
