@@ -2,6 +2,7 @@ import { eq, inArray } from "drizzle-orm";
 import type { WindmillClient } from "./windmill-client.js";
 import { closeRun } from "./runs-client.js";
 import { traceEvent } from "./trace-event.js";
+import { attributionContextToHeaders } from "./attribution-context.js";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -79,6 +80,7 @@ export class JobPoller {
               if (run.workflowSlug) pollerHeaders["x-workflow-slug"] = run.workflowSlug;
               if (run.featureSlug) pollerHeaders["x-feature-slug"] = run.featureSlug;
               if (run.campaignId) pollerHeaders["x-campaign-id"] = run.campaignId;
+              Object.assign(pollerHeaders, attributionContextToHeaders(run.attributionContext));
 
               traceEvent(run.runId, {
                 service: "workflow-service",

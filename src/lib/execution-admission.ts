@@ -1,6 +1,7 @@
 import { and, eq, inArray, lt, sql } from "drizzle-orm";
 import { workflowRuns, type Workflow, type WorkflowRun } from "../db/schema.js";
 import type { db as DbInstance } from "../db/index.js";
+import type { CampaignAttributionContext } from "./attribution-context.js";
 
 type Database = typeof DbInstance;
 
@@ -31,6 +32,7 @@ export interface ReserveCampaignExecutionInput {
   brandIds: string[];
   featureSlug: string;
   inputs: Record<string, unknown> | undefined;
+  attributionContext: CampaignAttributionContext | null;
   conflictPolicy: ExecutionConflictPolicy;
 }
 
@@ -96,6 +98,7 @@ export async function reserveCampaignExecution(
         executionScope: EXECUTION_SCOPE_CAMPAIGN,
         executionKey,
         conflictPolicy: input.conflictPolicy,
+        attributionContext: input.attributionContext,
         reservedAt: new Date(),
       })
       .returning();

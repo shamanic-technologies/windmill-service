@@ -10,6 +10,15 @@ const FORWARDED_HEADERS = [
   "x-campaign-id",
   "x-workflow-slug",
   "x-feature-slug",
+  "x-goal",
+  "x-brand-profile-id",
+  "x-customer-persona-id",
+  "x-customer-profile-id",
+  "x-profile-id",
+  "x-persona-id",
+  "x-goal-id",
+  "x-goal-slug",
+  "x-optimization-goal",
 ] as const;
 
 export async function traceEvent(

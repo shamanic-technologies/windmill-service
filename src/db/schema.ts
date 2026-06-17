@@ -70,6 +70,7 @@ export const workflowRuns = pgTable(
     executionScope: text("execution_scope"),
     executionKey: text("execution_key"),
     conflictPolicy: text("conflict_policy"),
+    attributionContext: jsonb("attribution_context"),
     inputs: jsonb("inputs"),
     result: jsonb("result"),
     error: text("error"),

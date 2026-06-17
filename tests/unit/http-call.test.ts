@@ -87,6 +87,47 @@ describe("http-call script", () => {
     expect(options.headers["x-feature-slug"]).toBe("sales-email-cold-outreach");
   });
 
+  it("auto-injects attribution headers when provided", async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse({ ok: true }));
+
+    await main(
+      "lead", "POST", "/buffer/next",
+      { foo: "bar" },
+      undefined,
+      serviceEnvs,
+      undefined,
+      undefined,
+      "org-1",
+      "user-1",
+      "run-1",
+      undefined,
+      "camp-123",
+      "brand-456",
+      "sales-email-cold-outreach",
+      "sales-email-cold-outreach",
+      "signup",
+      "brand-profile-real-1",
+      "customer-persona-real-1",
+      "customer-profile-real-1",
+      "profile-real-1",
+      "persona-real-1",
+      "goal-real-1",
+      "signups",
+      "signups",
+    );
+
+    const [, options] = mockFetch.mock.calls[0];
+    expect(options.headers["x-goal"]).toBe("signup");
+    expect(options.headers["x-brand-profile-id"]).toBe("brand-profile-real-1");
+    expect(options.headers["x-customer-persona-id"]).toBe("customer-persona-real-1");
+    expect(options.headers["x-customer-profile-id"]).toBe("customer-profile-real-1");
+    expect(options.headers["x-profile-id"]).toBe("profile-real-1");
+    expect(options.headers["x-persona-id"]).toBe("persona-real-1");
+    expect(options.headers["x-goal-id"]).toBe("goal-real-1");
+    expect(options.headers["x-goal-slug"]).toBe("signups");
+    expect(options.headers["x-optimization-goal"]).toBe("signups");
+  });
+
   it("merges custom headers with defaults", async () => {
     mockFetch.mockResolvedValueOnce(jsonResponse({ found: true }));
 

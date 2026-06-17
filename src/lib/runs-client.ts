@@ -1,6 +1,11 @@
 // --- Runs-service client ---
 // Creates child runs in runs-service to track execution costs.
 
+import {
+  attributionContextToHeaders,
+  type CampaignAttributionContext,
+} from "./attribution-context.js";
+
 function getRunsServiceConfig(): { baseUrl: string; apiKey: string } {
   const baseUrl = process.env.RUNS_SERVICE_URL;
   const apiKey = process.env.RUNS_SERVICE_API_KEY;
@@ -35,6 +40,7 @@ export async function createRun(opts: {
   campaignId?: string;
   /** CSV-formatted brand IDs (e.g. "uuid1,uuid2") forwarded via x-brand-id header */
   brandIdHeader?: string;
+  attributionContext?: CampaignAttributionContext | null;
 }): Promise<CreateRunResult> {
   const { baseUrl, apiKey } = getRunsServiceConfig();
 
@@ -54,6 +60,7 @@ export async function createRun(opts: {
   if (opts.campaignId) headers["x-campaign-id"] = opts.campaignId;
   if (opts.brandIdHeader) headers["x-brand-id"] = opts.brandIdHeader;
   if (opts.workflowSlug) headers["x-workflow-slug"] = opts.workflowSlug;
+  Object.assign(headers, attributionContextToHeaders(opts.attributionContext));
 
   const res = await fetch(`${baseUrl}/v1/runs`, {
     method: "POST",
