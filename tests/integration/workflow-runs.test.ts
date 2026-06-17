@@ -330,6 +330,10 @@ describe("POST /workflows/:id/execute", () => {
     });
 
     const attributionContext = {
+      goal: "signup",
+      brandProfileId: "brand-profile-real-1",
+      customerPersonaId: "customer-persona-real-1",
+      customerProfileId: "customer-profile-real-1",
       profileId: "profile-real-1",
       personaId: "persona-real-1",
       goalId: "goal-real-1",
@@ -360,6 +364,10 @@ describe("POST /workflows/:id/execute", () => {
       "f/workflows/org_1/test_flow",
       expect.objectContaining({
         attributionContext: expectedAttribution,
+        goal: "signup",
+        brandProfileId: "brand-profile-real-1",
+        customerPersonaId: "customer-persona-real-1",
+        customerProfileId: "customer-profile-real-1",
         profileId: "profile-real-1",
         personaId: "persona-real-1",
         goalId: "goal-real-1",
@@ -394,6 +402,10 @@ describe("POST /workflows/:id/execute", () => {
     expect(mockCreateRun.mock.calls[0][0]).not.toHaveProperty("attributionContext");
     const flowInputs = mockRunFlow.mock.calls[0][1];
     expect(flowInputs).not.toHaveProperty("attributionContext");
+    expect(flowInputs).not.toHaveProperty("goal");
+    expect(flowInputs).not.toHaveProperty("brandProfileId");
+    expect(flowInputs).not.toHaveProperty("customerPersonaId");
+    expect(flowInputs).not.toHaveProperty("customerProfileId");
     expect(flowInputs).not.toHaveProperty("profileId");
     expect(flowInputs).not.toHaveProperty("personaId");
     expect(flowInputs).not.toHaveProperty("goalId");
@@ -1152,6 +1164,10 @@ describe("GET /workflow-runs/:id", () => {
       brandIds: ["brand-1"],
       campaignId: "camp-1",
       featureSlug: "test-feature",
+      goal: "signup",
+      brandProfileId: "brand-profile-real-1",
+      customerPersonaId: "customer-persona-real-1",
+      customerProfileId: "customer-profile-real-1",
       profileId: "profile-real-1",
       personaId: "persona-real-1",
       goalId: "goal-real-1",

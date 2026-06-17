@@ -163,7 +163,17 @@ async function startWorkflowExecution(params: {
       const attributionFlowInputs: Record<string, unknown> = {};
       if (attributionContext) {
         attributionFlowInputs.attributionContext = attributionContext;
-        for (const field of ["profileId", "personaId", "goalId", "goalSlug", "optimizationGoal"] as const) {
+        for (const field of [
+          "goal",
+          "brandProfileId",
+          "customerPersonaId",
+          "customerProfileId",
+          "profileId",
+          "personaId",
+          "goalId",
+          "goalSlug",
+          "optimizationGoal",
+        ] as const) {
           if (typeof attributionContext[field] === "string") {
             attributionFlowInputs[field] = attributionContext[field];
           }

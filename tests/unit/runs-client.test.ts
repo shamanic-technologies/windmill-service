@@ -134,6 +134,10 @@ describe("createRun", () => {
       userId: "user-1",
       taskName: "execute-workflow",
       attributionContext: {
+        goal: "signup",
+        brandProfileId: "brand-profile-real-1",
+        customerPersonaId: "customer-persona-real-1",
+        customerProfileId: "customer-profile-real-1",
         profileId: "profile-real-1",
         personaId: "persona-real-1",
         goalId: "goal-real-1",
@@ -146,6 +150,10 @@ describe("createRun", () => {
       "http://localhost:5000/v1/runs",
       expect.objectContaining({
         headers: expect.objectContaining({
+          "x-goal": "signup",
+          "x-brand-profile-id": "brand-profile-real-1",
+          "x-customer-persona-id": "customer-persona-real-1",
+          "x-customer-profile-id": "customer-profile-real-1",
           "x-profile-id": "profile-real-1",
           "x-persona-id": "persona-real-1",
           "x-goal-id": "goal-real-1",
