@@ -237,12 +237,9 @@ describe("dagToOpenFlow", () => {
           type: "javascript",
           expr: "flow_input.brandProfileId",
         });
-        expect(transforms.customerPersonaId).toEqual({
-          type: "javascript",
-          expr: "flow_input.customerPersonaId",
-        });
-        // Deprecated audience alias must NOT be auto-injected.
+        // Deprecated aliases must NOT be auto-injected.
         expect(transforms.customerProfileId).toBeUndefined();
+        expect(transforms.customerPersonaId).toBeUndefined();
         expect(transforms.profileId).toEqual({
           type: "javascript",
           expr: "flow_input.profileId",
@@ -343,9 +340,9 @@ describe("dagToOpenFlow", () => {
     expect(props.attributionContext).toEqual({ type: "object", description: "Optional campaign attribution context supplied at execution time" });
     expect(props.goal).toEqual({ type: "string", description: "Optional active goal from attribution context" });
     expect(props.brandProfileId).toEqual({ type: "string", description: "Optional brand profile identifier from attribution context" });
-    expect(props.customerPersonaId).toEqual({ type: "string", description: "Optional customer persona identifier from attribution context" });
-    // Deprecated audience alias must NOT appear in the flow_input schema.
+    // Deprecated aliases must NOT appear in the flow_input schema.
     expect(props.customerProfileId).toBeUndefined();
+    expect(props.customerPersonaId).toBeUndefined();
     expect(props.personaId).toEqual({ type: "string", description: "Optional persona identifier from attribution context" });
   });
 

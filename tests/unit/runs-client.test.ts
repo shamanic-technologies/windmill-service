@@ -136,7 +136,6 @@ describe("createRun", () => {
       attributionContext: {
         goal: "signup",
         brandProfileId: "brand-profile-real-1",
-        customerPersonaId: "customer-persona-real-1",
         profileId: "profile-real-1",
         personaId: "persona-real-1",
         goalId: "goal-real-1",
@@ -151,7 +150,6 @@ describe("createRun", () => {
         headers: expect.objectContaining({
           "x-goal": "signup",
           "x-brand-profile-id": "brand-profile-real-1",
-          "x-customer-persona-id": "customer-persona-real-1",
           "x-profile-id": "profile-real-1",
           "x-persona-id": "persona-real-1",
           "x-goal-id": "goal-real-1",

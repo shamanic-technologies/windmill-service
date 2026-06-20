@@ -5,7 +5,6 @@ export interface CampaignAttributionContext extends Record<string, unknown> {
   featureSlug?: string;
   goal?: string;
   brandProfileId?: string;
-  customerPersonaId?: string;
   profileId?: string;
   personaId?: string;
   goalId?: string;
@@ -16,7 +15,6 @@ export interface CampaignAttributionContext extends Record<string, unknown> {
 const ATTRIBUTION_HEADER_FIELDS = [
   ["x-goal", "goal"],
   ["x-brand-profile-id", "brandProfileId"],
-  ["x-customer-persona-id", "customerPersonaId"],
   ["x-profile-id", "profileId"],
   ["x-persona-id", "personaId"],
   ["x-goal-id", "goalId"],
@@ -27,7 +25,6 @@ const ATTRIBUTION_HEADER_FIELDS = [
 const FLAT_INPUT_FIELDS = [
   "goal",
   "brandProfileId",
-  "customerPersonaId",
   "profileId",
   "personaId",
   "goalId",
