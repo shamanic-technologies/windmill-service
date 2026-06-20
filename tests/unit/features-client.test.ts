@@ -39,7 +39,6 @@ describe("extractDownstreamHeaders", () => {
       "x-goal": "signup",
       "x-brand-profile-id": "brand-profile-pqr",
       "x-customer-persona-id": "customer-persona-stu",
-      "x-customer-profile-id": "customer-profile-stu",
       "x-profile-id": "profile-pqr",
       "x-persona-id": "persona-stu",
       "x-goal-id": "goal-vwx",
@@ -47,6 +46,8 @@ describe("extractDownstreamHeaders", () => {
       "x-optimization-goal": "signups",
     });
     expect(result).not.toHaveProperty("x-api-key");
+    // Deprecated audience alias must be stripped even when the caller still sends it.
+    expect(result).not.toHaveProperty("x-customer-profile-id");
   });
 
   it("omits optional headers that are not present", () => {
