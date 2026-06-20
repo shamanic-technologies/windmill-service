@@ -332,7 +332,6 @@ describe("POST /workflows/:id/execute", () => {
     const attributionContext = {
       goal: "signup",
       brandProfileId: "brand-profile-real-1",
-      customerPersonaId: "customer-persona-real-1",
       profileId: "profile-real-1",
       personaId: "persona-real-1",
       goalId: "goal-real-1",
@@ -365,7 +364,6 @@ describe("POST /workflows/:id/execute", () => {
         attributionContext: expectedAttribution,
         goal: "signup",
         brandProfileId: "brand-profile-real-1",
-        customerPersonaId: "customer-persona-real-1",
         profileId: "profile-real-1",
         personaId: "persona-real-1",
         goalId: "goal-real-1",
@@ -1164,7 +1162,6 @@ describe("GET /workflow-runs/:id", () => {
       featureSlug: "test-feature",
       goal: "signup",
       brandProfileId: "brand-profile-real-1",
-      customerPersonaId: "customer-persona-real-1",
       profileId: "profile-real-1",
       personaId: "persona-real-1",
       goalId: "goal-real-1",

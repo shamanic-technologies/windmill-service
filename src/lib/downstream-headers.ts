@@ -17,7 +17,6 @@ const DOWNSTREAM_HEADER_KEYS = [
   "x-feature-slug",
   "x-goal",
   "x-brand-profile-id",
-  "x-customer-persona-id",
   "x-profile-id",
   "x-persona-id",
   "x-goal-id",
