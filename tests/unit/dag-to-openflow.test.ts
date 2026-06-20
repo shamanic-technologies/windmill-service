@@ -284,6 +284,21 @@ describe("dagToOpenFlow", () => {
     }
   });
 
+  it("does not inject audienceId into nodes that run BEFORE start-run (no Windmill result-by-id 404)", () => {
+    // gate-check precedes start-run in the chassis. Windmill resolves
+    // `results.start_run` via a result-by-id fetch before the JS `?.` guard,
+    // so injecting the transform here 404s the lookup at dispatch
+    // ("Flow result by id not found ... id: start_run"). Regression for that
+    // spurious warning: only start-run DESCENDANTS get the audienceId transform.
+    const result = dagToOpenFlow(DAG_WITH_CAMPAIGN_START_RUN, "Audience Flow");
+    const gateCheck = result.value.modules.find((m) => m.id === "gate_check");
+    expect(gateCheck).toBeDefined();
+    if (gateCheck!.value.type === "script") {
+      const transforms = gateCheck!.value.input_transforms as Record<string, unknown>;
+      expect(transforms.audienceId).toBeUndefined();
+    }
+  });
+
   it("does not inject audienceId into the start-run node itself (no self-reference)", () => {
     const result = dagToOpenFlow(DAG_WITH_CAMPAIGN_START_RUN, "Audience Flow");
     const startRun = result.value.modules.find((m) => m.id === "start_run");
