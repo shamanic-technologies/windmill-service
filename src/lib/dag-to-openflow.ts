@@ -365,18 +365,18 @@ function buildForEachModule(
 }
 
 /**
- * Find the campaign-service `/start-run` node and return its Windmill module id.
+ * Find the campaign-service `/start-run` node.
  *
  * campaign-service re-selects the priority audience for each run inside
  * `/start-run` and returns it as `audienceId`. That value is only known AFTER
  * start-run executes (the root execute-workflow run is already created), so it
  * cannot be a dispatch-time flow_input — it is threaded forward from this
- * node's result into every subsequent node as the x-audience-id header.
+ * node's result into every DOWNSTREAM node as the x-audience-id header.
  *
  * Returns null for non-campaign flows (no start-run node → no audience to
  * propagate).
  */
-function findCampaignStartRunModuleId(dag: DAG): string | null {
+function findCampaignStartRunNode(dag: DAG): DAGNode | null {
   for (const node of dag.nodes) {
     if (node.type !== "http.call") continue;
     const service = node.config?.service;
@@ -386,10 +386,71 @@ function findCampaignStartRunModuleId(dag: DAG): string | null {
       typeof path === "string" &&
       /start[-_]?run/i.test(path)
     ) {
-      return node.id.replace(/-/g, "_");
+      return node;
     }
   }
   return null;
+}
+
+/**
+ * Module ids (hyphens→underscores) of every node reachable FORWARD from
+ * `startNodeId` via edges — the nodes that execute strictly AFTER it.
+ *
+ * Only these may reference `results.<start_run>`: Windmill resolves a
+ * `results.X` reference by fetching the flow result by id BEFORE the JS `?.`
+ * guard runs, so a node that runs at-or-before start-run (e.g. the gate-check
+ * that precedes it in the chassis) would 404 the result lookup at dispatch
+ * ("Flow result by id not found ... id: start_run"). Scoping the audienceId
+ * injection to descendants removes that spurious 404 warning on every run.
+ *
+ * The start node itself is excluded (BFS starts from its successors), so no
+ * self-reference is emitted.
+ */
+function descendantModuleIds(dag: DAG, startNodeId: string): Set<string> {
+  const adj = new Map<string, string[]>();
+  for (const edge of dag.edges) {
+    const list = adj.get(edge.from) ?? [];
+    list.push(edge.to);
+    adj.set(edge.from, list);
+  }
+
+  const seen = new Set<string>();
+  const queue = [...(adj.get(startNodeId) ?? [])];
+  while (queue.length > 0) {
+    const current = queue.shift()!;
+    if (seen.has(current)) continue;
+    seen.add(current);
+    for (const next of adj.get(current) ?? []) queue.push(next);
+  }
+
+  return new Set([...seen].map((id) => id.replace(/-/g, "_")));
+}
+
+interface AudiencePropagationScope {
+  startRunModuleId: string | null;
+  descendants: Set<string>;
+}
+
+const audienceScopeCache = new WeakMap<DAG, AudiencePropagationScope>();
+
+/**
+ * Resolve (and memoize per DAG) the start-run module id + the set of module ids
+ * downstream of it that should receive the threaded `audienceId` transform.
+ */
+function getAudiencePropagationScope(dag: DAG): AudiencePropagationScope {
+  const cached = audienceScopeCache.get(dag);
+  if (cached) return cached;
+
+  const startNode = findCampaignStartRunNode(dag);
+  const scope: AudiencePropagationScope = startNode
+    ? {
+        startRunModuleId: startNode.id.replace(/-/g, "_"),
+        descendants: descendantModuleIds(dag, startNode.id),
+      }
+    : { startRunModuleId: null, descendants: new Set<string>() };
+
+  audienceScopeCache.set(dag, scope);
+  return scope;
 }
 
 function nodeToModule(node: DAGNode, dag: DAG): FlowModule | null {
@@ -507,13 +568,14 @@ function nodeToModule(node: DAGNode, dag: DAG): FlowModule | null {
   // Propagate the per-run audience chosen by campaign-service inside /start-run.
   // Unlike the identity fields above, audienceId is not a flow_input — it is
   // only known once start-run has executed, so it is threaded from that node's
-  // result into every SUBSEQUENT node's x-audience-id header. The start-run node
-  // itself is skipped (self-reference); nodes that run before it resolve the
-  // optional-chained expression to undefined, so no empty header is emitted.
-  const startRunModuleId = findCampaignStartRunModuleId(dag);
+  // result into every node DOWNSTREAM of start-run as the x-audience-id header.
+  // Scope to descendants only: Windmill resolves `results.<start_run>` via a
+  // result-by-id fetch BEFORE the JS `?.` runs, so injecting it into a node that
+  // runs at-or-before start-run (e.g. gate-check) 404s the lookup at dispatch.
+  const { startRunModuleId, descendants } = getAudiencePropagationScope(dag);
   if (
     startRunModuleId &&
-    moduleId !== startRunModuleId &&
+    descendants.has(moduleId) &&
     !inputTransforms.audienceId
   ) {
     inputTransforms.audienceId = {
