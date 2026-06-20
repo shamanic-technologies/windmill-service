@@ -25,7 +25,6 @@ export async function main(
   goal?: string,
   brandProfileId?: string,
   customerPersonaId?: string,
-  customerProfileId?: string,
   profileId?: string,
   personaId?: string,
   goalId?: string,
@@ -88,7 +87,6 @@ export async function main(
   if (goal) reqHeaders["x-goal"] = goal;
   if (brandProfileId) reqHeaders["x-brand-profile-id"] = brandProfileId;
   if (customerPersonaId) reqHeaders["x-customer-persona-id"] = customerPersonaId;
-  if (customerProfileId) reqHeaders["x-customer-profile-id"] = customerProfileId;
   if (profileId) reqHeaders["x-profile-id"] = profileId;
   if (personaId) reqHeaders["x-persona-id"] = personaId;
   if (goalId) reqHeaders["x-goal-id"] = goalId;
