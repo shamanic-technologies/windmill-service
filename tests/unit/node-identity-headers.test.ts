@@ -277,6 +277,43 @@ describe("node scripts inject identity headers", () => {
       expect(options.headers["x-run-id"]).toBe("ctx-run");
       expect(options.headers["x-user-id"]).toBeUndefined();
     });
+
+    it("forwards x-audience-id when audienceId param is provided", async () => {
+      const { main } = await import("../../scripts/nodes/lead-service.js");
+      mockFetch.mockResolvedValueOnce(jsonResponse({ found: true, lead: { email: "a@b.com" } }));
+
+      await main(
+        "apollo",                                                               // source
+        undefined,                                                              // searchParams
+        { orgId: "ctx-org", brandId: "b1", campaignId: "c1", runId: "ctx-run" }, // context
+        leadEnvs,                                                               // serviceEnvs
+        "org-uuid-1",                                                           // orgId
+        "user-uuid-1",                                                          // userId
+        "run-uuid-1",                                                           // runId
+        "audience-real-1",                                                      // audienceId
+      );
+
+      const [, options] = mockFetch.mock.calls[0];
+      expect(options.headers["x-audience-id"]).toBe("audience-real-1");
+    });
+
+    it("omits x-audience-id when audienceId param is undefined", async () => {
+      const { main } = await import("../../scripts/nodes/lead-service.js");
+      mockFetch.mockResolvedValueOnce(jsonResponse({ found: true, lead: { email: "a@b.com" } }));
+
+      await main(
+        "apollo",
+        undefined,
+        { orgId: "ctx-org", brandId: "b1", campaignId: "c1", runId: "ctx-run" },
+        leadEnvs,
+        "org-uuid-1",
+        "user-uuid-1",
+        "run-uuid-1",
+      );
+
+      const [, options] = mockFetch.mock.calls[0];
+      expect(options.headers["x-audience-id"]).toBeUndefined();
+    });
   });
 
   describe("outbound-sending", () => {

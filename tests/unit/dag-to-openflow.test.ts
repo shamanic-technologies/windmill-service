@@ -13,6 +13,7 @@ import {
   DAG_WITH_ON_ERROR,
   DAG_WITH_FLOW_INPUT_REFS,
   DAG_WITH_CONFIG_RETRIES,
+  DAG_WITH_CAMPAIGN_START_RUN,
   DAG_WITH_DOT_NOTATION_AND_STATIC_BASE,
   DAG_WITH_STOP_AFTER_IF,
   DAG_WITH_SKIP_IF,
@@ -264,6 +265,46 @@ describe("dagToOpenFlow", () => {
           type: "javascript",
           expr: "flow_input.optimizationGoal",
         });
+      }
+    }
+  });
+
+  it("threads audienceId from campaign /start-run result into every subsequent node", () => {
+    const result = dagToOpenFlow(DAG_WITH_CAMPAIGN_START_RUN, "Audience Flow");
+    const byId = new Map(result.value.modules.map((m) => [m.id, m]));
+
+    for (const id of ["fetch_lead", "email_send"]) {
+      const mod = byId.get(id);
+      expect(mod).toBeDefined();
+      if (mod!.value.type === "script") {
+        const transforms = mod!.value.input_transforms as Record<
+          string,
+          { type: string; expr?: string }
+        >;
+        expect(transforms.audienceId).toEqual({
+          type: "javascript",
+          expr: "results.start_run?.audienceId",
+        });
+      }
+    }
+  });
+
+  it("does not inject audienceId into the start-run node itself (no self-reference)", () => {
+    const result = dagToOpenFlow(DAG_WITH_CAMPAIGN_START_RUN, "Audience Flow");
+    const startRun = result.value.modules.find((m) => m.id === "start_run");
+    expect(startRun).toBeDefined();
+    if (startRun!.value.type === "script") {
+      const transforms = startRun!.value.input_transforms as Record<string, unknown>;
+      expect(transforms.audienceId).toBeUndefined();
+    }
+  });
+
+  it("injects no audienceId when the DAG has no campaign /start-run node", () => {
+    const result = dagToOpenFlow(VALID_LINEAR_DAG, "No Campaign Audience");
+    for (const mod of result.value.modules) {
+      if (mod.value.type === "script") {
+        const transforms = mod.value.input_transforms as Record<string, unknown>;
+        expect(transforms.audienceId).toBeUndefined();
       }
     }
   });

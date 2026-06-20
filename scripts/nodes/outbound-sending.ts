@@ -15,6 +15,7 @@ export async function main(
   orgId?: string,
   userId?: string,
   runId?: string,
+  audienceId?: string,
 ) {
   const baseUrl = serviceEnvs?.["OUTBOUND_SENDING_URL"] ?? Bun.env.OUTBOUND_SENDING_URL;
   const apiKey = serviceEnvs?.["OUTBOUND_SENDING_API_KEY"] ?? Bun.env.OUTBOUND_SENDING_API_KEY;
@@ -30,6 +31,7 @@ export async function main(
   if (resolvedOrgId) reqHeaders["x-org-id"] = resolvedOrgId;
   if (userId) reqHeaders["x-user-id"] = userId;
   if (resolvedRunId) reqHeaders["x-run-id"] = resolvedRunId;
+  if (audienceId) reqHeaders["x-audience-id"] = audienceId;
 
   const response = await fetch(
     `${baseUrl}/send`,

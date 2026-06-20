@@ -475,6 +475,44 @@ export const DAG_WITH_CONFIG_RETRIES: DAG = {
   edges: [],
 };
 
+// Campaign chassis: gate-check → start-run (campaign /start-run, which returns
+// the chosen audienceId) → business logic. Used to verify the per-run audience
+// is threaded forward from the start-run result into every subsequent node.
+export const DAG_WITH_CAMPAIGN_START_RUN: DAG = {
+  nodes: [
+    {
+      id: "gate-check",
+      type: "http.call",
+      config: { service: "campaign", method: "POST", path: "/gate-check" },
+      inputMapping: { "body.campaignId": "$ref:flow_input.campaignId" },
+    },
+    {
+      id: "start-run",
+      type: "http.call",
+      config: { service: "campaign", method: "POST", path: "/start-run" },
+      inputMapping: { "body.campaignId": "$ref:flow_input.campaignId" },
+      retries: 0,
+    },
+    {
+      id: "fetch-lead",
+      type: "http.call",
+      config: { service: "lead", method: "POST", path: "/buffer/next" },
+      retries: 0,
+    },
+    {
+      id: "email-send",
+      type: "http.call",
+      config: { service: "email-gateway", method: "POST", path: "/send" },
+      retries: 0,
+    },
+  ],
+  edges: [
+    { from: "gate-check", to: "start-run" },
+    { from: "start-run", to: "fetch-lead" },
+    { from: "fetch-lead", to: "email-send" },
+  ],
+};
+
 export const DAG_WITH_DOT_NOTATION_AND_STATIC_BASE: DAG = {
   nodes: [
     {
