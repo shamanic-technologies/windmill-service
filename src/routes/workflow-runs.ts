@@ -166,7 +166,6 @@ async function startWorkflowExecution(params: {
         for (const field of [
           "goal",
           "brandProfileId",
-          "customerPersonaId",
           "profileId",
           "personaId",
           "goalId",
