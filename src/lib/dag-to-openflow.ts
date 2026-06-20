@@ -80,6 +80,16 @@ export function dagToOpenFlow(dag: DAG, name: string): OpenFlow {
     brandId: { type: "string", description: "Brand identifier (auto-injected)" },
     workflowSlug: { type: "string", description: "Workflow slug (auto-injected)" },
     featureSlug: { type: "string", description: "Feature slug from features-service (auto-injected)" },
+    attributionContext: { type: "object", description: "Optional campaign attribution context supplied at execution time" },
+    goal: { type: "string", description: "Optional active goal from attribution context" },
+    brandProfileId: { type: "string", description: "Optional brand profile identifier from attribution context" },
+    customerPersonaId: { type: "string", description: "Optional customer persona identifier from attribution context" },
+    customerProfileId: { type: "string", description: "Optional customer profile identifier from attribution context" },
+    profileId: { type: "string", description: "Optional profile identifier from attribution context" },
+    personaId: { type: "string", description: "Optional persona identifier from attribution context" },
+    goalId: { type: "string", description: "Optional goal identifier from attribution context" },
+    goalSlug: { type: "string", description: "Optional goal slug from attribution context" },
+    optimizationGoal: { type: "string", description: "Optional active optimization goal from attribution context" },
   };
   for (const node of dag.nodes) {
     if (!node.inputMapping) continue;
@@ -356,6 +366,34 @@ function buildForEachModule(
   };
 }
 
+/**
+ * Find the campaign-service `/start-run` node and return its Windmill module id.
+ *
+ * campaign-service re-selects the priority audience for each run inside
+ * `/start-run` and returns it as `audienceId`. That value is only known AFTER
+ * start-run executes (the root execute-workflow run is already created), so it
+ * cannot be a dispatch-time flow_input — it is threaded forward from this
+ * node's result into every subsequent node as the x-audience-id header.
+ *
+ * Returns null for non-campaign flows (no start-run node → no audience to
+ * propagate).
+ */
+function findCampaignStartRunModuleId(dag: DAG): string | null {
+  for (const node of dag.nodes) {
+    if (node.type !== "http.call") continue;
+    const service = node.config?.service;
+    const path = node.config?.path;
+    if (
+      (service === "campaign" || service === "campaign-service") &&
+      typeof path === "string" &&
+      /start[-_]?run/i.test(path)
+    ) {
+      return node.id.replace(/-/g, "_");
+    }
+  }
+  return null;
+}
+
 function nodeToModule(node: DAGNode, dag: DAG): FlowModule | null {
   const moduleId = node.id.replace(/-/g, "_");
 
@@ -453,12 +491,41 @@ function nodeToModule(node: DAGNode, dag: DAG): FlowModule | null {
     brandId: "flow_input.brandId",
     workflowSlug: "flow_input.workflowSlug",
     featureSlug: "flow_input.featureSlug",
+    attributionContext: "flow_input.attributionContext",
+    goal: "flow_input.goal",
+    brandProfileId: "flow_input.brandProfileId",
+    customerPersonaId: "flow_input.customerPersonaId",
+    customerProfileId: "flow_input.customerProfileId",
+    profileId: "flow_input.profileId",
+    personaId: "flow_input.personaId",
+    goalId: "flow_input.goalId",
+    goalSlug: "flow_input.goalSlug",
+    optimizationGoal: "flow_input.optimizationGoal",
   };
   for (const [key, expr] of Object.entries(autoInjects)) {
     if (!inputTransforms[key]) {
       inputTransforms[key] = { type: "javascript", expr };
     }
   }
+
+  // Propagate the per-run audience chosen by campaign-service inside /start-run.
+  // Unlike the identity fields above, audienceId is not a flow_input — it is
+  // only known once start-run has executed, so it is threaded from that node's
+  // result into every SUBSEQUENT node's x-audience-id header. The start-run node
+  // itself is skipped (self-reference); nodes that run before it resolve the
+  // optional-chained expression to undefined, so no empty header is emitted.
+  const startRunModuleId = findCampaignStartRunModuleId(dag);
+  if (
+    startRunModuleId &&
+    moduleId !== startRunModuleId &&
+    !inputTransforms.audienceId
+  ) {
+    inputTransforms.audienceId = {
+      type: "javascript",
+      expr: `results.${startRunModuleId}?.audienceId`,
+    };
+  }
+
   const mod: FlowModule = {
     id: moduleId,
     summary: `${node.type}: ${node.id}`,
@@ -501,6 +568,16 @@ function buildFailureModule(node: DAGNode): FlowModule | null {
     brandId: "flow_input.brandId",
     workflowSlug: "flow_input.workflowSlug",
     featureSlug: "flow_input.featureSlug",
+    attributionContext: "flow_input.attributionContext",
+    goal: "flow_input.goal",
+    brandProfileId: "flow_input.brandProfileId",
+    customerPersonaId: "flow_input.customerPersonaId",
+    customerProfileId: "flow_input.customerProfileId",
+    profileId: "flow_input.profileId",
+    personaId: "flow_input.personaId",
+    goalId: "flow_input.goalId",
+    goalSlug: "flow_input.goalSlug",
+    optimizationGoal: "flow_input.optimizationGoal",
   };
   for (const [key, expr] of Object.entries(failureAutoInjects)) {
     if (!inputTransforms[key]) {

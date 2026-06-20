@@ -13,6 +13,7 @@ import {
   DAG_WITH_ON_ERROR,
   DAG_WITH_FLOW_INPUT_REFS,
   DAG_WITH_CONFIG_RETRIES,
+  DAG_WITH_CAMPAIGN_START_RUN,
   DAG_WITH_DOT_NOTATION_AND_STATIC_BASE,
   DAG_WITH_STOP_AFTER_IF,
   DAG_WITH_SKIP_IF,
@@ -220,6 +221,90 @@ describe("dagToOpenFlow", () => {
           type: "javascript",
           expr: "flow_input.workflowSlug",
         });
+        expect(transforms.featureSlug).toEqual({
+          type: "javascript",
+          expr: "flow_input.featureSlug",
+        });
+        expect(transforms.attributionContext).toEqual({
+          type: "javascript",
+          expr: "flow_input.attributionContext",
+        });
+        expect(transforms.goal).toEqual({
+          type: "javascript",
+          expr: "flow_input.goal",
+        });
+        expect(transforms.brandProfileId).toEqual({
+          type: "javascript",
+          expr: "flow_input.brandProfileId",
+        });
+        expect(transforms.customerPersonaId).toEqual({
+          type: "javascript",
+          expr: "flow_input.customerPersonaId",
+        });
+        expect(transforms.customerProfileId).toEqual({
+          type: "javascript",
+          expr: "flow_input.customerProfileId",
+        });
+        expect(transforms.profileId).toEqual({
+          type: "javascript",
+          expr: "flow_input.profileId",
+        });
+        expect(transforms.personaId).toEqual({
+          type: "javascript",
+          expr: "flow_input.personaId",
+        });
+        expect(transforms.goalId).toEqual({
+          type: "javascript",
+          expr: "flow_input.goalId",
+        });
+        expect(transforms.goalSlug).toEqual({
+          type: "javascript",
+          expr: "flow_input.goalSlug",
+        });
+        expect(transforms.optimizationGoal).toEqual({
+          type: "javascript",
+          expr: "flow_input.optimizationGoal",
+        });
+      }
+    }
+  });
+
+  it("threads audienceId from campaign /start-run result into every subsequent node", () => {
+    const result = dagToOpenFlow(DAG_WITH_CAMPAIGN_START_RUN, "Audience Flow");
+    const byId = new Map(result.value.modules.map((m) => [m.id, m]));
+
+    for (const id of ["fetch_lead", "email_send"]) {
+      const mod = byId.get(id);
+      expect(mod).toBeDefined();
+      if (mod!.value.type === "script") {
+        const transforms = mod!.value.input_transforms as Record<
+          string,
+          { type: string; expr?: string }
+        >;
+        expect(transforms.audienceId).toEqual({
+          type: "javascript",
+          expr: "results.start_run?.audienceId",
+        });
+      }
+    }
+  });
+
+  it("does not inject audienceId into the start-run node itself (no self-reference)", () => {
+    const result = dagToOpenFlow(DAG_WITH_CAMPAIGN_START_RUN, "Audience Flow");
+    const startRun = result.value.modules.find((m) => m.id === "start_run");
+    expect(startRun).toBeDefined();
+    if (startRun!.value.type === "script") {
+      const transforms = startRun!.value.input_transforms as Record<string, unknown>;
+      expect(transforms.audienceId).toBeUndefined();
+    }
+  });
+
+  it("injects no audienceId when the DAG has no campaign /start-run node", () => {
+    const result = dagToOpenFlow(VALID_LINEAR_DAG, "No Campaign Audience");
+    for (const mod of result.value.modules) {
+      if (mod.value.type === "script") {
+        const transforms = mod.value.input_transforms as Record<string, unknown>;
+        expect(transforms.audienceId).toBeUndefined();
       }
     }
   });
@@ -257,6 +342,12 @@ describe("dagToOpenFlow", () => {
     expect(props.userId).toEqual({ type: "string", description: "User identifier" });
     expect(props.runId).toEqual({ type: "string", description: "Runs-service run ID for this execution" });
     expect(props.serviceEnvs).toEqual({ type: "object", description: "Service URLs and API keys injected by workflow-service" });
+    expect(props.attributionContext).toEqual({ type: "object", description: "Optional campaign attribution context supplied at execution time" });
+    expect(props.goal).toEqual({ type: "string", description: "Optional active goal from attribution context" });
+    expect(props.brandProfileId).toEqual({ type: "string", description: "Optional brand profile identifier from attribution context" });
+    expect(props.customerPersonaId).toEqual({ type: "string", description: "Optional customer persona identifier from attribution context" });
+    expect(props.customerProfileId).toEqual({ type: "string", description: "Optional customer profile identifier from attribution context" });
+    expect(props.personaId).toEqual({ type: "string", description: "Optional persona identifier from attribution context" });
   });
 
   it("generates valid OpenFlow schema structure", () => {

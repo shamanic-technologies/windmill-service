@@ -13,6 +13,15 @@ describe("extractDownstreamHeaders", () => {
         "x-campaign-id": "camp-mno",
         "x-workflow-slug": "my-workflow",
         "x-feature-slug": "my-feature",
+        "x-goal": "signup",
+        "x-brand-profile-id": "brand-profile-pqr",
+        "x-customer-persona-id": "customer-persona-stu",
+        "x-customer-profile-id": "customer-profile-stu",
+        "x-profile-id": "profile-pqr",
+        "x-persona-id": "persona-stu",
+        "x-goal-id": "goal-vwx",
+        "x-goal-slug": "signups",
+        "x-optimization-goal": "signups",
         "x-api-key": "should-not-appear",
       },
     };
@@ -27,6 +36,15 @@ describe("extractDownstreamHeaders", () => {
       "x-campaign-id": "camp-mno",
       "x-workflow-slug": "my-workflow",
       "x-feature-slug": "my-feature",
+      "x-goal": "signup",
+      "x-brand-profile-id": "brand-profile-pqr",
+      "x-customer-persona-id": "customer-persona-stu",
+      "x-customer-profile-id": "customer-profile-stu",
+      "x-profile-id": "profile-pqr",
+      "x-persona-id": "persona-stu",
+      "x-goal-id": "goal-vwx",
+      "x-goal-slug": "signups",
+      "x-optimization-goal": "signups",
     });
     expect(result).not.toHaveProperty("x-api-key");
   });

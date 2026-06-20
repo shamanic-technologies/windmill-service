@@ -5,6 +5,7 @@ export async function main(
   orgId?: string,
   userId?: string,
   runId?: string,
+  audienceId?: string,
 ) {
   const baseUrl = serviceEnvs?.STRIPE_SERVICE_URL ?? Bun.env.STRIPE_SERVICE_URL;
   const apiKey = serviceEnvs?.STRIPE_SERVICE_API_KEY ?? Bun.env.STRIPE_SERVICE_API_KEY;
@@ -15,6 +16,7 @@ export async function main(
   if (orgId) reqHeaders["x-org-id"] = orgId;
   if (userId) reqHeaders["x-user-id"] = userId;
   if (runId) reqHeaders["x-run-id"] = runId;
+  if (audienceId) reqHeaders["x-audience-id"] = audienceId;
   if (apiKey) reqHeaders["x-api-key"] = apiKey;
 
   const response = await fetch(

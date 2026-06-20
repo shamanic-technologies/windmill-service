@@ -10,6 +10,7 @@ export async function main(
   orgId?: string,
   userId?: string,
   runId?: string,
+  audienceId?: string,
 ) {
   const baseUrl = serviceEnvs?.CLIENT_SERVICE_URL ?? Bun.env.CLIENT_SERVICE_URL;
   const apiKey = serviceEnvs?.CLIENT_SERVICE_API_KEY ?? Bun.env.CLIENT_SERVICE_API_KEY;
@@ -23,6 +24,7 @@ export async function main(
   if (resolvedOrgId) headers["x-org-id"] = resolvedOrgId;
   if (userId) headers["x-user-id"] = userId;
   if (runId) headers["x-run-id"] = runId;
+  if (audienceId) headers["x-audience-id"] = audienceId;
 
   if (action === "create" || action === "update") {
     const response = await fetch(`${baseUrl}/anonymous-users`, {

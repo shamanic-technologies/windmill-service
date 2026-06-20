@@ -22,6 +22,16 @@ export async function main(
   brandId?: string,
   workflowSlug?: string,
   featureSlug?: string,
+  goal?: string,
+  brandProfileId?: string,
+  customerPersonaId?: string,
+  customerProfileId?: string,
+  profileId?: string,
+  personaId?: string,
+  goalId?: string,
+  goalSlug?: string,
+  optimizationGoal?: string,
+  audienceId?: string,
 ) {
   if (!service) {
     throw new Error(
@@ -75,6 +85,18 @@ export async function main(
   if (brandId) reqHeaders["x-brand-id"] = brandId;
   if (workflowSlug) reqHeaders["x-workflow-slug"] = workflowSlug;
   if (featureSlug) reqHeaders["x-feature-slug"] = featureSlug;
+  if (goal) reqHeaders["x-goal"] = goal;
+  if (brandProfileId) reqHeaders["x-brand-profile-id"] = brandProfileId;
+  if (customerPersonaId) reqHeaders["x-customer-persona-id"] = customerPersonaId;
+  if (customerProfileId) reqHeaders["x-customer-profile-id"] = customerProfileId;
+  if (profileId) reqHeaders["x-profile-id"] = profileId;
+  if (personaId) reqHeaders["x-persona-id"] = personaId;
+  if (goalId) reqHeaders["x-goal-id"] = goalId;
+  if (goalSlug) reqHeaders["x-goal-slug"] = goalSlug;
+  if (optimizationGoal) reqHeaders["x-optimization-goal"] = optimizationGoal;
+  // Per-run audience chosen by campaign-service /start-run, threaded forward
+  // from that node's result so runs-service attributes downstream cost to it.
+  if (audienceId) reqHeaders["x-audience-id"] = audienceId;
   // Caller-supplied headers can override identity headers
   if (headers) Object.assign(reqHeaders, headers);
   // Resolved x-api-key always takes precedence
