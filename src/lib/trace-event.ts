@@ -13,7 +13,6 @@ const FORWARDED_HEADERS = [
   "x-goal",
   "x-brand-profile-id",
   "x-customer-persona-id",
-  "x-customer-profile-id",
   "x-profile-id",
   "x-persona-id",
   "x-goal-id",

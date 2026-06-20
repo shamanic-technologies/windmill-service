@@ -167,7 +167,6 @@ async function startWorkflowExecution(params: {
           "goal",
           "brandProfileId",
           "customerPersonaId",
-          "customerProfileId",
           "profileId",
           "personaId",
           "goalId",
