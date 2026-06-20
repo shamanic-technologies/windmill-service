@@ -31,6 +31,7 @@ export async function main(
   goalId?: string,
   goalSlug?: string,
   optimizationGoal?: string,
+  audienceId?: string,
 ) {
   if (!service) {
     throw new Error(
@@ -93,6 +94,9 @@ export async function main(
   if (goalId) reqHeaders["x-goal-id"] = goalId;
   if (goalSlug) reqHeaders["x-goal-slug"] = goalSlug;
   if (optimizationGoal) reqHeaders["x-optimization-goal"] = optimizationGoal;
+  // Per-run audience chosen by campaign-service /start-run, threaded forward
+  // from that node's result so runs-service attributes downstream cost to it.
+  if (audienceId) reqHeaders["x-audience-id"] = audienceId;
   // Caller-supplied headers can override identity headers
   if (headers) Object.assign(reqHeaders, headers);
   // Resolved x-api-key always takes precedence

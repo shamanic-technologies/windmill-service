@@ -12,6 +12,7 @@ const DOWNSTREAM_HEADER_KEYS = [
   "x-run-id",
   "x-brand-id",
   "x-campaign-id",
+  "x-audience-id",
   "x-workflow-slug",
   "x-feature-slug",
   "x-goal",

@@ -12,6 +12,7 @@ export async function main(
   brandId?: string,
   campaignId?: string,
   runId?: string,
+  audienceId?: string,
   serviceEnvs?: Record<string, string>,
   userId?: string,
 ) {
@@ -26,6 +27,7 @@ export async function main(
   if (orgId) reqHeaders["x-org-id"] = orgId;
   if (userId) reqHeaders["x-user-id"] = userId;
   if (runId) reqHeaders["x-run-id"] = runId;
+  if (audienceId) reqHeaders["x-audience-id"] = audienceId;
   if (apiKey) reqHeaders["x-api-key"] = apiKey;
 
   const response = await fetch(

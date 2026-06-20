@@ -5,6 +5,7 @@ export async function main(
   eventType?: string,
   serviceEnvs?: Record<string, string>,
   runId?: string,
+  audienceId?: string,
 ) {
   const baseUrl = serviceEnvs?.["TRANSACTIONAL_EMAIL_SERVICE_URL"] ?? Bun.env.TRANSACTIONAL_EMAIL_SERVICE_URL;
   const apiKey = serviceEnvs?.["TRANSACTIONAL_EMAIL_SERVICE_API_KEY"] ?? Bun.env.TRANSACTIONAL_EMAIL_SERVICE_API_KEY;
@@ -18,6 +19,7 @@ export async function main(
   if (orgId) reqHeaders["x-org-id"] = orgId;
   if (userId) reqHeaders["x-user-id"] = userId;
   if (runId) reqHeaders["x-run-id"] = runId;
+  if (audienceId) reqHeaders["x-audience-id"] = audienceId;
 
   const response = await fetch(
     `${baseUrl}/stats`,

@@ -128,6 +128,59 @@ describe("http-call script", () => {
     expect(options.headers["x-optimization-goal"]).toBe("signups");
   });
 
+  it("forwards x-audience-id when audienceId is provided (per-run audience attribution)", async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse({ ok: true }));
+
+    await main(
+      "lead", "POST", "/buffer/next",
+      { foo: "bar" },
+      undefined, // query
+      serviceEnvs,
+      undefined, // headers
+      undefined, // validateResponse
+      "org-1",
+      "user-1",
+      "run-1",
+      undefined, // params
+      undefined, // campaignId
+      undefined, // brandId
+      undefined, // workflowSlug
+      undefined, // featureSlug
+      undefined, // goal
+      undefined, // brandProfileId
+      undefined, // customerPersonaId
+      undefined, // customerProfileId
+      undefined, // profileId
+      undefined, // personaId
+      undefined, // goalId
+      undefined, // goalSlug
+      undefined, // optimizationGoal
+      "audience-real-1", // audienceId
+    );
+
+    const [, options] = mockFetch.mock.calls[0];
+    expect(options.headers["x-audience-id"]).toBe("audience-real-1");
+  });
+
+  it("omits x-audience-id when audienceId is undefined (no empty header)", async () => {
+    mockFetch.mockResolvedValueOnce(jsonResponse({ ok: true }));
+
+    await main(
+      "lead", "POST", "/buffer/next",
+      { foo: "bar" },
+      undefined,
+      serviceEnvs,
+      undefined,
+      undefined,
+      "org-1",
+      "user-1",
+      "run-1",
+    );
+
+    const [, options] = mockFetch.mock.calls[0];
+    expect(options.headers["x-audience-id"]).toBeUndefined();
+  });
+
   it("merges custom headers with defaults", async () => {
     mockFetch.mockResolvedValueOnce(jsonResponse({ found: true }));
 

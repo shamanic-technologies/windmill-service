@@ -366,6 +366,34 @@ function buildForEachModule(
   };
 }
 
+/**
+ * Find the campaign-service `/start-run` node and return its Windmill module id.
+ *
+ * campaign-service re-selects the priority audience for each run inside
+ * `/start-run` and returns it as `audienceId`. That value is only known AFTER
+ * start-run executes (the root execute-workflow run is already created), so it
+ * cannot be a dispatch-time flow_input — it is threaded forward from this
+ * node's result into every subsequent node as the x-audience-id header.
+ *
+ * Returns null for non-campaign flows (no start-run node → no audience to
+ * propagate).
+ */
+function findCampaignStartRunModuleId(dag: DAG): string | null {
+  for (const node of dag.nodes) {
+    if (node.type !== "http.call") continue;
+    const service = node.config?.service;
+    const path = node.config?.path;
+    if (
+      (service === "campaign" || service === "campaign-service") &&
+      typeof path === "string" &&
+      /start[-_]?run/i.test(path)
+    ) {
+      return node.id.replace(/-/g, "_");
+    }
+  }
+  return null;
+}
+
 function nodeToModule(node: DAGNode, dag: DAG): FlowModule | null {
   const moduleId = node.id.replace(/-/g, "_");
 
@@ -479,6 +507,25 @@ function nodeToModule(node: DAGNode, dag: DAG): FlowModule | null {
       inputTransforms[key] = { type: "javascript", expr };
     }
   }
+
+  // Propagate the per-run audience chosen by campaign-service inside /start-run.
+  // Unlike the identity fields above, audienceId is not a flow_input — it is
+  // only known once start-run has executed, so it is threaded from that node's
+  // result into every SUBSEQUENT node's x-audience-id header. The start-run node
+  // itself is skipped (self-reference); nodes that run before it resolve the
+  // optional-chained expression to undefined, so no empty header is emitted.
+  const startRunModuleId = findCampaignStartRunModuleId(dag);
+  if (
+    startRunModuleId &&
+    moduleId !== startRunModuleId &&
+    !inputTransforms.audienceId
+  ) {
+    inputTransforms.audienceId = {
+      type: "javascript",
+      expr: `results.${startRunModuleId}?.audienceId`,
+    };
+  }
+
   const mod: FlowModule = {
     id: moduleId,
     summary: `${node.type}: ${node.id}`,
