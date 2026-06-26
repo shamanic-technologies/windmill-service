@@ -279,60 +279,57 @@ router.post(
       let workflow: WorkflowRow | undefined = activeRows[0];
 
       if (!workflow) {
-        // Check if deprecated — follow upgrade chain to find active replacement.
-        // The chain is now reversed: a successor row points back via
-        // created_from_workflow with creation_type='upgrade'.
-        const [deprecated] = await db
+        // The slug has no active row. It may be a deprecated/older version of a
+        // dynasty — callers (e.g. campaign-service) pass the stable dynasty slug,
+        // which equals v1's workflow_slug, and v1 is deprecated after upgrades.
+        // Resolve FORWARD to the dynasty's current active version via a direct
+        // dynasty-slug lookup: O(1), no chain walk, no depth cap, no cycle risk.
+        // (The previous walk capped at 10 hops and stranded dynasties with >11
+        // versions on a 410 — live prod stuck-loop, the tectonic dynasty at v16.)
+        const [known] = await db
           .select()
           .from(workflows)
           .where(eq(workflows.workflowSlug, req.params.slug));
 
-        if (deprecated && deprecated.status === "deprecated") {
-          let currentId: string | null = deprecated.id;
-          let firstSuccessor: WorkflowRow | null = null;
-          let depth = 0;
-          while (currentId && depth < 10) {
-            const successorRows: WorkflowRow[] = await db
-              .select()
-              .from(workflows)
-              .where(
-                and(
-                  eq(workflows.createdFromWorkflow, currentId),
-                  eq(workflows.creationType, "upgrade"),
-                )
-              );
-            const successor = successorRows[0];
-
-            if (!successor) break;
-            if (depth === 0) firstSuccessor = successor;
-            if (successor.status === "active") {
-              workflow = successor;
-              console.log(
-                `[workflow-service] Execute by slug: "${req.params.slug}" is deprecated, following upgrade chain to "${successor.workflowSlug}" (${successor.id})`,
-              );
-              break;
-            }
-            currentId = successor.id;
-            depth++;
-          }
-
-          if (!workflow) {
-            // Dead end — no active workflow at the end of the chain.
-            res.status(410).json({
-              error: "Workflow has been deprecated",
-              upgradedTo: firstSuccessor?.id ?? null,
-              upgradedToWorkflowSlug: firstSuccessor?.workflowSlug ?? null,
-            });
-            return;
-          }
-        } else {
+        if (!known) {
           console.warn(
-            `[workflow-service] Execute by slug: workflow "${req.params.slug}" not found (no active workflow with this slug)`,
+            `[workflow-service] Execute by slug: workflow "${req.params.slug}" not found (no workflow with this slug)`,
           );
           res.status(404).json({
             error: `Workflow "${req.params.slug}" not found`,
           });
           return;
+        }
+
+        // Exactly one active row exists per dynasty (partial unique index on
+        // feature_slug+signature_name WHERE status='active'). Forks branch into a
+        // NEW dynasty_slug, so the active row sharing THIS dynasty_slug is the
+        // terminal version of the upgrade chain.
+        const [activeInDynasty] = await db
+          .select()
+          .from(workflows)
+          .where(
+            and(
+              eq(workflows.workflowDynastySlug, known.workflowDynastySlug),
+              eq(workflows.status, "active"),
+            )
+          );
+
+        if (!activeInDynasty) {
+          // Dynasty fully deprecated — no live version to run.
+          res.status(410).json({
+            error: "Workflow has been deprecated",
+            upgradedTo: null,
+            upgradedToWorkflowSlug: null,
+          });
+          return;
+        }
+
+        workflow = activeInDynasty;
+        if (workflow.workflowSlug !== req.params.slug) {
+          console.log(
+            `[workflow-service] Execute by slug: "${req.params.slug}" resolved forward to active dynasty version "${workflow.workflowSlug}" (${workflow.id})`,
+          );
         }
       }
 
