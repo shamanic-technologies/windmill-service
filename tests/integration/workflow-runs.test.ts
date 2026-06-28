@@ -199,10 +199,8 @@ const WF_OLD_ID = "00000000-0000-4000-8000-000000000002";
 const WF_NEW_ID = "00000000-0000-4000-8000-000000000003";
 const WF_CROSS_ID = "00000000-0000-4000-8000-000000000004";
 const WF_V1_ID = "00000000-0000-4000-8000-000000000005";
-const WF_V2_ID = "00000000-0000-4000-8000-000000000006";
 const WF_V3_ID = "00000000-0000-4000-8000-000000000007";
 const WF_DEAD_ID = "00000000-0000-4000-8000-000000000008";
-const WF_MISSING_ID = "00000000-0000-4000-8000-000000000009";
 const WF_FEAT_ID = "00000000-0000-4000-8000-00000000000a";
 const RUN_1_ID = "00000000-0000-4000-8000-000000000010";
 const RUN_DEBUG_ID = "00000000-0000-4000-8000-000000000011";
@@ -911,10 +909,10 @@ describe("POST /workflows/by-slug/:slug/execute", () => {
     expect(res.body.error).toContain("nonexistent");
   });
 
-  it("follows upgrade chain and executes active replacement", async () => {
+  it("resolves a deprecated slug forward to the active dynasty version", async () => {
     mockSelectResponses.push(
-      [],  // 1. active-only lookup → not found
-      [{   // 2. any-status lookup → deprecated workflow
+      [],  // 1. active-only lookup by workflow_slug → not found
+      [{   // 2. any-status lookup by workflow_slug → deprecated workflow
         id: WF_OLD_ID,
         workflowSlug: "deprecated-flow",
         workflowName: "Deprecated Flow",
@@ -923,12 +921,12 @@ describe("POST /workflows/by-slug/:slug/execute", () => {
         version: 1,
         status: "deprecated",
       }],
-      [{   // 3. successor lookup via created_from_workflow → active replacement
+      [{   // 3. active-in-dynasty lookup by workflow_dynasty_slug → active version
         id: WF_NEW_ID,
-        workflowSlug: "replacement-flow",
-        workflowName: "Replacement Flow",
-        workflowDynastySlug: "replacement-flow",
-        workflowDynastyName: "Replacement Flow",
+        workflowSlug: "deprecated-flow-v2",
+        workflowName: "Deprecated Flow v2",
+        workflowDynastySlug: "deprecated-flow",
+        workflowDynastyName: "Deprecated Flow",
         version: 2,
         status: "active",
         windmillFlowPath: "f/workflows/org_1/replacement_flow",
@@ -950,10 +948,13 @@ describe("POST /workflows/by-slug/:slug/execute", () => {
     );
   });
 
-  it("follows multi-hop upgrade chain to active version", async () => {
+  // Regression: a long dynasty (v1 deprecated → active v16) must resolve via the
+  // direct dynasty-slug lookup, regardless of chain depth. The previous bounded
+  // walk capped at 10 hops and 410'd the live tectonic dynasty (v16).
+  it("resolves a deep dynasty (v1 → active v16) by dynasty slug, ignoring chain depth", async () => {
     mockSelectResponses.push(
-      [],  // 1. active-only lookup → not found
-      [{   // 2. any-status lookup → deprecated v1
+      [],  // 1. active-only lookup by workflow_slug → not found
+      [{   // 2. any-status lookup by workflow_slug → deprecated v1 (slug == dynasty slug)
         id: WF_V1_ID,
         workflowSlug: "old-flow",
         workflowName: "Old Flow",
@@ -962,22 +963,13 @@ describe("POST /workflows/by-slug/:slug/execute", () => {
         version: 1,
         status: "deprecated",
       }],
-      [{   // 3. successor of v1 → v2 (also deprecated)
-        id: WF_V2_ID,
-        workflowSlug: "mid-flow",
-        workflowName: "Mid Flow",
-        workflowDynastySlug: "mid-flow",
-        workflowDynastyName: "Mid Flow",
-        version: 2,
-        status: "deprecated",
-      }],
-      [{   // 4. successor of v2 → v3 (active)
+      [{   // 3. active-in-dynasty lookup → v16, the chain terminal (15 hops away)
         id: WF_V3_ID,
-        workflowSlug: "current-flow",
-        workflowName: "Current Flow",
-        workflowDynastySlug: "current-flow",
-        workflowDynastyName: "Current Flow",
-        version: 3,
+        workflowSlug: "old-flow-v16",
+        workflowName: "Old Flow v16",
+        workflowDynastySlug: "old-flow",
+        workflowDynastyName: "Old Flow",
+        version: 16,
         status: "active",
         windmillFlowPath: "f/workflows/org_1/current_flow",
         windmillWorkspace: "prod",
@@ -998,10 +990,10 @@ describe("POST /workflows/by-slug/:slug/execute", () => {
     );
   });
 
-  it("returns 410 when upgrade chain ends without active workflow", async () => {
+  it("returns 410 when the dynasty has no active version", async () => {
     mockSelectResponses.push(
-      [],  // 1. active-only lookup → not found
-      [{   // 2. any-status lookup → deprecated, no successor
+      [],  // 1. active-only lookup by workflow_slug → not found
+      [{   // 2. any-status lookup by workflow_slug → deprecated
         id: WF_DEAD_ID,
         workflowSlug: "dead-flow",
         workflowName: "Dead Flow",
@@ -1010,7 +1002,7 @@ describe("POST /workflows/by-slug/:slug/execute", () => {
         version: 1,
         status: "deprecated",
       }],
-      [],  // 3. successor lookup → none
+      [],  // 3. active-in-dynasty lookup → none (dynasty fully deprecated)
     );
 
     const res = await request
@@ -1024,35 +1016,45 @@ describe("POST /workflows/by-slug/:slug/execute", () => {
     expect(res.body.upgradedToWorkflowSlug).toBeNull();
   });
 
-  it("returns 410 with first successor when chain leads to a deprecated successor with no further upgrade", async () => {
+  // A versioned (v-suffixed) deprecated slug — not the v1 dynasty slug — still
+  // resolves forward to the dynasty's active version via the dynasty-slug lookup.
+  it("resolves a versioned deprecated slug forward to the active dynasty version", async () => {
     mockSelectResponses.push(
-      [],  // 1. active-only lookup → not found
-      [{   // 2. any-status lookup → original deprecated row
+      [],  // 1. active-only lookup by workflow_slug → not found
+      [{   // 2. any-status lookup by workflow_slug → deprecated v3
         id: WF_OLD_ID,
-        workflowSlug: "orphan-flow",
-        workflowName: "Orphan Flow",
+        workflowSlug: "orphan-flow-v3",
+        workflowName: "Orphan Flow v3",
         workflowDynastySlug: "orphan-flow",
         workflowDynastyName: "Orphan Flow",
-        version: 1,
+        version: 3,
         status: "deprecated",
       }],
-      [{   // 3. successor → also deprecated
-        id: WF_MISSING_ID,
-        workflowSlug: "orphan-successor",
-        status: "deprecated",
+      [{   // 3. active-in-dynasty lookup → active v5
+        id: WF_NEW_ID,
+        workflowSlug: "orphan-flow-v5",
+        workflowName: "Orphan Flow v5",
+        workflowDynastySlug: "orphan-flow",
+        workflowDynastyName: "Orphan Flow",
+        version: 5,
+        status: "active",
+        windmillFlowPath: "f/workflows/org_1/orphan_flow_v5",
+        windmillWorkspace: "prod",
+        dag: VALID_LINEAR_DAG,
       }],
-      [],  // 4. successor of the successor → none, break
     );
 
     const res = await request
-      .post("/workflows/by-slug/orphan-flow/execute")
+      .post("/workflows/by-slug/orphan-flow-v3/execute")
       .set(AUTH)
       .send({ inputs: {} });
 
-    expect(res.status).toBe(410);
-    expect(res.body.error).toBe("Workflow has been deprecated");
-    expect(res.body.upgradedTo).toBe(WF_MISSING_ID);
-    expect(res.body.upgradedToWorkflowSlug).toBe("orphan-successor");
+    expect(res.status).toBe(201);
+    expect(res.body.status).toBe("queued");
+    expect(mockRunFlow).toHaveBeenCalledWith(
+      "f/workflows/org_1/orphan_flow_v5",
+      expect.objectContaining({ orgId: "org-1" }),
+    );
   });
 
   it("uses campaignId from header into Windmill flow inputs (by slug)", async () => {
@@ -1112,12 +1114,12 @@ describe("POST /workflows/by-slug/:slug/execute", () => {
         subrequestId: null,
         upgradedTo: WF_NEW_ID,
       }],
-      [{   // 3. chain follow: replacement is active
+      [{   // 3. active-in-dynasty lookup → active version in the same dynasty
         id: WF_NEW_ID,
-        workflowSlug: "new-flow",
-        workflowName: "New Flow",
-        workflowDynastySlug: "new-flow",
-        workflowDynastyName: "New Flow",
+        workflowSlug: "old-flow-v2",
+        workflowName: "Old Flow v2",
+        workflowDynastySlug: "old-flow",
+        workflowDynastyName: "Old Flow",
         version: 2,
         status: "active",
         campaignId: null,
