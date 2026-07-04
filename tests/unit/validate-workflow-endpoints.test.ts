@@ -544,7 +544,7 @@ describe("field validation — output fields", () => {
   });
 });
 
-describe("field validation — nested object detection in additionalProperties", () => {
+describe("field validation — object/array template variables are allowed", () => {
   const CONTENT_GEN_SPEC: Record<string, unknown> = {
     paths: {
       "/generate": {
@@ -736,7 +736,7 @@ describe("field validation — nested object detection in additionalProperties",
     },
   };
 
-  it("detects nested object in body.variables.lead (regression: 'To: Unknown recipient' bug)", () => {
+  it("does NOT flag object-valued body.variables.lead (multibrand: objects are valid variable values)", () => {
     const dag: DAG = {
       nodes: [
         {
@@ -781,14 +781,17 @@ describe("field validation — nested object detection in additionalProperties",
 
     const result = validateWorkflowEndpoints(dag, specs);
 
-    // Should detect that body.variables.lead maps to an object
-    const nestedErrors = result.fieldIssues.filter(
-      (i) => i.severity === "error" && i.field === "variables.lead",
+    // Object/array-valued template variables are a first-class, intended input
+    // (multibrand). content-generation renders objects/arrays as markdown into
+    // the prompt — so body.variables.lead mapping to an object is NOT an error
+    // and NOT a warning.
+    const scalarIssues = result.fieldIssues.filter(
+      (i) => i.reason.includes("flat scalars") || i.reason.includes("nested objects"),
     );
-    expect(nestedErrors).toHaveLength(1);
-    expect(nestedErrors[0].reason).toContain("object");
-    expect(nestedErrors[0].reason).toContain("flat scalars");
-    expect(result.valid).toBe(false);
+    expect(scalarIssues).toHaveLength(0);
+
+    const leadIssues = result.fieldIssues.filter((i) => i.field === "variables.lead");
+    expect(leadIssues).toHaveLength(0);
   });
 
   it("allows flat scalar variables (leadFirstName, leadLastName, etc.)", () => {
