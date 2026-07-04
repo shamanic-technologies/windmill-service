@@ -1,6 +1,6 @@
 import type { DAG, DAGNode } from "./dag-validator.js";
 import { extractHttpEndpoints } from "./extract-http-endpoints.js";
-import { getRequestBodySchema, getResponseSchema, resolveSchema, walkSchemaPath } from "./openapi-schema-resolver.js";
+import { getRequestBodySchema, getResponseSchema, walkSchemaPath } from "./openapi-schema-resolver.js";
 
 export interface InvalidEndpoint {
   service: string;
@@ -206,13 +206,11 @@ function validateFields(
       }
     }
 
-    // --- Nested object detection in additionalProperties fields ---
-    if (requestSchema && node.inputMapping) {
-      const nestedObjectIssues = validateNoNestedObjects(
-        node, dag, specs, requestSchema, spec, service, method, path,
-      );
-      issues.push(...nestedObjectIssues);
-    }
+    // Object/array-valued template variables (body.variables.*) are a
+    // first-class, intended input on this platform (multibrand). The
+    // content-generation /generate + /generate-expert-quote-pitch endpoints
+    // render objects/arrays as markdown into the prompt, so there is no
+    // "flat scalars only" rule to enforce here.
 
     // --- Output field validation ---
     const responseSchema = getResponseSchema(spec, path, method);
@@ -246,98 +244,6 @@ function validateFields(
           }
         }
       }
-    }
-  }
-
-  return issues;
-}
-
-/**
- * Detects when a body field with additionalProperties (e.g. `variables`)
- * has a sub-key mapped to a $ref that resolves to an object type in the
- * upstream node's response schema. This catches the bug where workflows
- * pass `body.variables.lead = $ref:fetch-lead.output.lead` (entire object)
- * instead of flat scalar keys like `body.variables.leadFirstName`.
- */
-function validateNoNestedObjects(
-  node: DAGNode,
-  dag: DAG,
-  specs: Map<string, Record<string, unknown>>,
-  requestSchema: { properties: Record<string, unknown>; required: string[] },
-  _spec: Record<string, unknown>,
-  service: string,
-  method: string,
-  path: string,
-): FieldValidationIssue[] {
-  const issues: FieldValidationIssue[] = [];
-  if (!node.inputMapping) return issues;
-
-  for (const [mappingKey, refValue] of Object.entries(node.inputMapping)) {
-    if (typeof refValue !== "string" || !refValue.startsWith("$ref:")) continue;
-
-    // Match body.X.Y (exactly two levels below body)
-    const bodyMatch = mappingKey.match(/^body\.([^.]+)\.([^.]+)$/);
-    if (!bodyMatch) continue;
-
-    const [, parentField, nestedKey] = bodyMatch;
-
-    // Check if parentField exists and has additionalProperties
-    const fieldSchema = requestSchema.properties[parentField] as Record<string, unknown> | undefined;
-    if (!fieldSchema) continue;
-
-    // Resolve $ref in the field schema itself
-    const resolvedFieldSchema = fieldSchema.$ref
-      ? resolveSchema(fieldSchema as Record<string, unknown>, _spec)
-      : fieldSchema;
-
-    const schemaToCheck = resolvedFieldSchema && "type" in resolvedFieldSchema
-      ? resolvedFieldSchema as Record<string, unknown>
-      : fieldSchema;
-
-    if (schemaToCheck.type !== "object" || !schemaToCheck.additionalProperties) continue;
-
-    // Now check if the $ref target resolves to an object in the upstream response schema
-    const refPath = refValue.replace("$ref:", "");
-    const refParts = refPath.split(".");
-    if (refParts[0] === "flow_input") continue; // flow_input refs are opaque
-
-    const refNodeId = refParts[0];
-    const upstreamNode = dag.nodes.find((n) => n.id === refNodeId);
-    if (!upstreamNode || upstreamNode.type !== "http.call" || !upstreamNode.config) continue;
-
-    const upService = upstreamNode.config.service as string;
-    const upMethod = upstreamNode.config.method as string;
-    const upPath = upstreamNode.config.path as string;
-    if (!upService || !upMethod || !upPath) continue;
-
-    const upSpec = specs.get(upService);
-    if (!upSpec) continue;
-
-    const upResponseSchema = getResponseSchema(upSpec, upPath, upMethod);
-    if (!upResponseSchema) continue;
-
-    // Get the referenced field path, skipping "output" keyword
-    const fieldParts = refParts.slice(1).filter((p) => p !== "output");
-    if (fieldParts.length === 0) continue;
-
-    // If the ref goes deeper than the top-level field (e.g. lead.data.firstName),
-    // it's accessing a nested scalar — that's fine. Only flag when it stops at the
-    // object level (e.g. just "lead" with no further path).
-    if (fieldParts.length > 1) continue;
-
-    const refFieldName = fieldParts[0];
-    const refFieldSchema = upResponseSchema.properties[refFieldName] as Record<string, unknown> | undefined;
-
-    if (refFieldSchema && (refFieldSchema.type === "object" || refFieldSchema.properties)) {
-      issues.push({
-        nodeId: node.id,
-        service,
-        method,
-        path,
-        field: `${parentField}.${nestedKey}`,
-        severity: "error",
-        reason: `"body.${parentField}.${nestedKey}" maps to "${refValue}" which resolves to an object — ${parentField} values must be flat scalars, not nested objects. Map individual fields instead (e.g. body.${parentField}.${nestedKey}FirstName)`,
-      });
     }
   }
 
