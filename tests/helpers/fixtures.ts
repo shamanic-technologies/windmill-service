@@ -513,6 +513,62 @@ export const DAG_WITH_CAMPAIGN_START_RUN: DAG = {
   ],
 };
 
+/**
+ * Campaign flow whose per-lead generation + send run INSIDE a for-each loop
+ * body (batch multiple leads per run). start-run returns the per-run audienceId;
+ * the loop body is an isolated Windmill subflow where `results.start_run` does
+ * NOT resolve, so audienceId must be threaded via the iterator + iter context.
+ */
+export const DAG_WITH_CAMPAIGN_FOREACH: DAG = {
+  nodes: [
+    {
+      id: "gate-check",
+      type: "http.call",
+      config: { service: "campaign", method: "POST", path: "/gate-check" },
+      inputMapping: { "body.campaignId": "$ref:flow_input.campaignId" },
+    },
+    {
+      id: "start-run",
+      type: "http.call",
+      config: { service: "campaign", method: "POST", path: "/start-run" },
+      inputMapping: { "body.campaignId": "$ref:flow_input.campaignId" },
+      retries: 0,
+    },
+    {
+      id: "fetch-leads",
+      type: "http.call",
+      config: { service: "lead", method: "POST", path: "/buffer/batch" },
+      retries: 0,
+    },
+    {
+      id: "loop-leads",
+      type: "for-each",
+      config: { iterator: "results.fetch_leads.leads", parallel: false },
+    },
+    {
+      id: "email-generate",
+      type: "http.call",
+      config: { service: "content-generation", method: "POST", path: "/generate" },
+      inputMapping: { "body.leadEmail": "$ref:loop-leads.output.email" },
+      retries: 0,
+    },
+    {
+      id: "email-send",
+      type: "http.call",
+      config: { service: "email-gateway", method: "POST", path: "/send" },
+      inputMapping: { "body.subject": "$ref:email-generate.output.subject" },
+      retries: 0,
+    },
+  ],
+  edges: [
+    { from: "gate-check", to: "start-run" },
+    { from: "start-run", to: "fetch-leads" },
+    { from: "fetch-leads", to: "loop-leads" },
+    { from: "loop-leads", to: "email-generate" },
+    { from: "email-generate", to: "email-send" },
+  ],
+};
+
 export const DAG_WITH_DOT_NOTATION_AND_STATIC_BASE: DAG = {
   nodes: [
     {

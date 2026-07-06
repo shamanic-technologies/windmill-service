@@ -14,6 +14,7 @@ import {
   DAG_WITH_FLOW_INPUT_REFS,
   DAG_WITH_CONFIG_RETRIES,
   DAG_WITH_CAMPAIGN_START_RUN,
+  DAG_WITH_CAMPAIGN_FOREACH,
   DAG_WITH_DOT_NOTATION_AND_STATIC_BASE,
   DAG_WITH_STOP_AFTER_IF,
   DAG_WITH_SKIP_IF,
@@ -317,6 +318,82 @@ describe("dagToOpenFlow", () => {
         expect(transforms.audienceId).toBeUndefined();
       }
     }
+  });
+
+  describe("audienceId threading into for-each loop bodies", () => {
+    // Regression for #321: per-lead gen/send nodes nested inside a for-each
+    // loop body must carry the run's audienceId, but `results.start_run` does
+    // NOT resolve inside a Windmill forloopflow subflow. audienceId is folded
+    // onto each iterated element (via the iterator expr, evaluated in the parent
+    // scope) and read back from `flow_input.iter.value` inside the body.
+    const flow = dagToOpenFlow(DAG_WITH_CAMPAIGN_FOREACH, "Campaign ForEach");
+    const topById = new Map(flow.value.modules.map((m) => [m.id, m]));
+    const loop = topById.get("loop_leads");
+
+    function loopBodyTransforms(id: string): Record<string, { type: string; expr?: string }> {
+      if (loop?.value.type !== "forloopflow") throw new Error("loop not a forloopflow");
+      const bodyMod = loop.value.modules.find((m) => m.id === id);
+      if (!bodyMod || bodyMod.value.type !== "script") throw new Error(`no script body ${id}`);
+      return bodyMod.value.input_transforms as Record<string, { type: string; expr?: string }>;
+    }
+
+    it("wraps the loop iterator to attach the per-run audienceId to each element", () => {
+      expect(loop).toBeDefined();
+      if (loop!.value.type === "forloopflow") {
+        const expr = (loop!.value.iterator as { type: string; expr: string }).expr;
+        // original iterator preserved, mapped, and audienceId attached from
+        // start-run's result (resolvable in the parent/iterator scope)
+        expect(expr).toContain("results.fetch_leads.leads");
+        expect(expr).toContain(".map(");
+        expect(expr).toContain("__wf_audience_id: results.start_run?.audienceId");
+      }
+    });
+
+    it("references audienceId from the iteration context on every loop-body node", () => {
+      for (const id of ["email_generate", "email_send"]) {
+        expect(loopBodyTransforms(id).audienceId).toEqual({
+          type: "javascript",
+          expr: "flow_input.iter.value?.__wf_audience_id",
+        });
+      }
+    });
+
+    it("does NOT reference the out-of-scope start-run result inside the loop body", () => {
+      for (const id of ["email_generate", "email_send"]) {
+        expect(loopBodyTransforms(id).audienceId.expr).not.toContain("results.start_run");
+      }
+    });
+
+    it("keeps the inline start-run result ref for descendants OUTSIDE the loop", () => {
+      const fetchLeads = topById.get("fetch_leads");
+      expect(fetchLeads).toBeDefined();
+      if (fetchLeads!.value.type === "script") {
+        const transforms = fetchLeads!.value.input_transforms as Record<
+          string,
+          { type: string; expr?: string }
+        >;
+        expect(transforms.audienceId).toEqual({
+          type: "javascript",
+          expr: "results.start_run?.audienceId",
+        });
+      }
+    });
+
+    it("does not wrap a for-each iterator when the DAG has no start-run node", () => {
+      const noCampaign = dagToOpenFlow(DAG_WITH_FOREACH, "No Campaign Loop");
+      const loopMod = noCampaign.value.modules.find((m) => m.id === "loop");
+      expect(loopMod).toBeDefined();
+      if (loopMod!.value.type === "forloopflow") {
+        // iterator untouched, no audienceId attach
+        expect((loopMod!.value.iterator as { expr: string }).expr).toBe("flow_input.contacts");
+        for (const body of loopMod!.value.modules) {
+          if (body.value.type === "script") {
+            const t = body.value.input_transforms as Record<string, unknown>;
+            expect(t.audienceId).toBeUndefined();
+          }
+        }
+      }
+    });
   });
 
   it("does not override explicit orgId in node config but auto-injects userId", () => {
