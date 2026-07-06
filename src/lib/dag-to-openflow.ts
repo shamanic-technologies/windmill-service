@@ -5,6 +5,25 @@ import { buildInputTransforms } from "./input-mapping.js";
 /** Global timeout applied to every script module (in seconds). 1 hour. */
 const NODE_TIMEOUT_SECONDS = 3600;
 
+/**
+ * Reserved key under which the per-run `audienceId` is attached to each element
+ * of a for-each iterator so it survives into the loop body.
+ *
+ * Windmill runs a `forloopflow` body as an isolated subflow: `flow_input.*`
+ * (top-level) and `flow_input.iter.value` (current element) resolve inside it,
+ * but `results.<outerStep>` does NOT (the start-run result reference used for
+ * top-level/branch nodes returns undefined inside the loop). So a value chosen
+ * mid-flow (the audienceId returned by campaign `/start-run`) cannot reach a
+ * loop-body node via `results.start_run` — it must be folded onto the iterated
+ * elements by the iterator expression (which IS evaluated in the parent scope
+ * where `results.start_run` resolves) and read back as
+ * `flow_input.iter.value?.<AUDIENCE_ITER_KEY>` inside the body.
+ */
+const AUDIENCE_ITER_KEY = "__wf_audience_id";
+
+/** The reference every loop-body node uses to read the threaded audienceId. */
+const LOOP_BODY_AUDIENCE_REF = `flow_input.iter.value?.${AUDIENCE_ITER_KEY}`;
+
 export interface FlowModule {
   id: string;
   summary?: string;
@@ -159,6 +178,15 @@ function buildModules(orderedNodes: DAGNode[], dag: DAG): FlowModule[] {
     }
   }
 
+  // The JS expression a start-run DESCENDANT uses to read the per-run audienceId.
+  // Inline contexts (top-level, branchone body) resolve `results.start_run`;
+  // for-each bodies override this to the iter-threaded reference (see
+  // buildForEachModule). Null when the DAG has no campaign /start-run node.
+  const { startRunModuleId } = getAudiencePropagationScope(dag);
+  const audienceRef = startRunModuleId
+    ? `results.${startRunModuleId}?.audienceId`
+    : null;
+
   // Build pass: iterate ordered nodes, skip consumed, build containers with nested modules
   const modules: FlowModule[] = [];
 
@@ -166,13 +194,13 @@ function buildModules(orderedNodes: DAGNode[], dag: DAG): FlowModule[] {
     if (consumed.has(node.id)) continue;
 
     if (node.type === "condition") {
-      const mod = buildConditionModule(node, dag, orderedNodes, conditionInfo.get(node.id)!);
+      const mod = buildConditionModule(node, dag, orderedNodes, conditionInfo.get(node.id)!, audienceRef);
       modules.push(mod);
     } else if (node.type === "for-each") {
-      const mod = buildForEachModule(node, orderedNodes, loopBodyInfo.get(node.id)!, dag);
+      const mod = buildForEachModule(node, orderedNodes, loopBodyInfo.get(node.id)!, dag, audienceRef);
       modules.push(mod);
     } else {
-      const mod = nodeToModule(node, dag);
+      const mod = nodeToModule(node, dag, audienceRef);
       if (mod) modules.push(mod);
     }
   }
@@ -284,6 +312,7 @@ function buildConditionModule(
   dag: DAG,
   orderedNodes: DAGNode[],
   info: { branchNodeSets: Map<string, Set<string>>; afterNodes: Set<string> },
+  audienceRef: string | null,
 ): FlowModule {
   const moduleId = node.id.replace(/-/g, "_");
   const outEdges = dag.edges.filter((e) => e.from === node.id && e.condition);
@@ -321,7 +350,9 @@ function buildConditionModule(
     const branchNodes = orderedNodes.filter((n) => branchNodeIds.has(n.id));
     const branchModules: FlowModule[] = [];
     for (const bn of branchNodes) {
-      const mod = nodeToModule(bn, dag);
+      // branchone runs inline in the parent flow scope, so `results.start_run`
+      // still resolves inside a branch body — forward the inline audienceRef.
+      const mod = nodeToModule(bn, dag, audienceRef);
       if (mod) branchModules.push(mod);
     }
 
@@ -340,14 +371,38 @@ function buildForEachModule(
   orderedNodes: DAGNode[],
   bodyNodeIds: Set<string>,
   dag: DAG,
+  audienceRef: string | null,
 ): FlowModule {
   const moduleId = node.id.replace(/-/g, "_");
-  const iteratorExpr = (node.config?.iterator as string) ?? "flow_input.items";
+  let iteratorExpr = (node.config?.iterator as string) ?? "flow_input.items";
+
+  // A for-each body is an isolated subflow — `results.start_run` (the inline
+  // audienceRef) does NOT resolve inside it. When this loop runs downstream of
+  // start-run, fold the per-run audienceId onto every iterated element via the
+  // iterator expression (evaluated in the PARENT scope, where the inbound
+  // audienceRef resolves), then have body nodes read it from the iteration
+  // context. This is what carries per-(audience × workflow) attribution to the
+  // per-lead send/generation calls nested in the loop.
+  const carriesAudience =
+    audienceRef !== null && isStartRunDescendant(dag, moduleId);
+
+  if (carriesAudience) {
+    // (origIter ?? []).map(el => el && typeof el === "object"
+    //   ? { ...el, __wf_audience_id: <audienceRef> } : el)
+    iteratorExpr =
+      `(${iteratorExpr} ?? []).map((__wf_el) => ` +
+      `(__wf_el && typeof __wf_el === "object") ? ` +
+      `{ ...__wf_el, ${AUDIENCE_ITER_KEY}: ${audienceRef} } : __wf_el)`;
+  }
+
+  // Inside the loop body, audienceId is read from the (possibly wrapped)
+  // iteration element, not from the out-of-scope start-run result.
+  const bodyAudienceRef = carriesAudience ? LOOP_BODY_AUDIENCE_REF : null;
 
   const bodyNodes = orderedNodes.filter((n) => bodyNodeIds.has(n.id));
   const bodyModules: FlowModule[] = [];
   for (const bn of bodyNodes) {
-    const mod = nodeToModule(bn, dag);
+    const mod = nodeToModule(bn, dag, bodyAudienceRef);
     if (mod) bodyModules.push(mod);
   }
 
@@ -362,6 +417,16 @@ function buildForEachModule(
       parallel: (node.config?.parallel as boolean) ?? false,
     },
   };
+}
+
+/**
+ * Whether `moduleId` is reachable forward from the campaign /start-run node —
+ * i.e. it runs strictly after start-run, so the run's audienceId is available
+ * to thread into it. False for non-campaign DAGs (no start-run node).
+ */
+function isStartRunDescendant(dag: DAG, moduleId: string): boolean {
+  const { startRunModuleId, descendants } = getAudiencePropagationScope(dag);
+  return startRunModuleId !== null && descendants.has(moduleId);
 }
 
 /**
@@ -453,7 +518,11 @@ function getAudiencePropagationScope(dag: DAG): AudiencePropagationScope {
   return scope;
 }
 
-function nodeToModule(node: DAGNode, dag: DAG): FlowModule | null {
+function nodeToModule(
+  node: DAGNode,
+  dag: DAG,
+  audienceRef: string | null,
+): FlowModule | null {
   const moduleId = node.id.replace(/-/g, "_");
 
   if (node.type === "wait") {
@@ -567,20 +636,25 @@ function nodeToModule(node: DAGNode, dag: DAG): FlowModule | null {
 
   // Propagate the per-run audience chosen by campaign-service inside /start-run.
   // Unlike the identity fields above, audienceId is not a flow_input — it is
-  // only known once start-run has executed, so it is threaded from that node's
-  // result into every node DOWNSTREAM of start-run as the x-audience-id header.
-  // Scope to descendants only: Windmill resolves `results.<start_run>` via a
-  // result-by-id fetch BEFORE the JS `?.` runs, so injecting it into a node that
-  // runs at-or-before start-run (e.g. gate-check) 404s the lookup at dispatch.
+  // only known once start-run has executed, so it is threaded downstream as the
+  // x-audience-id header. `audienceRef` is the caller-scoped expression that
+  // resolves to it: `results.start_run?.audienceId` for inline (top-level /
+  // branchone) nodes, or the iter-threaded `flow_input.iter.value?...` for
+  // nodes inside a for-each body (where the start-run result is out of scope).
+  // Scope to start-run descendants only: Windmill resolves `results.<start_run>`
+  // via a result-by-id fetch BEFORE the JS `?.` runs, so injecting the inline
+  // ref into a node that runs at-or-before start-run (e.g. gate-check) 404s the
+  // lookup at dispatch.
   const { startRunModuleId, descendants } = getAudiencePropagationScope(dag);
   if (
+    audienceRef &&
     startRunModuleId &&
     descendants.has(moduleId) &&
     !inputTransforms.audienceId
   ) {
     inputTransforms.audienceId = {
       type: "javascript",
-      expr: `results.${startRunModuleId}?.audienceId`,
+      expr: audienceRef,
     };
   }
 
