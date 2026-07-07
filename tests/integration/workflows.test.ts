@@ -1335,3 +1335,123 @@ describe("POST /workflows/upgrade (workflowDynastySlug lookup)", () => {
     expect(res.status).toBe(400);
   });
 });
+
+describe("PUT /workflows/dynasty/:workflowDynastySlug/status", () => {
+  const DYNASTY = "sales-cold-email-outreach-sequoia";
+
+  beforeEach(() => {
+    mockDbRows.length = 0;
+    mockSelectResponses.length = 0;
+    mockFetchProviderRequirements.mockReset();
+    mockFetchProviderRequirements.mockResolvedValue({ requirements: [], providers: [] });
+  });
+
+  function pushDynastyRow(overrides: Record<string, unknown> = {}) {
+    mockDbRows.push({
+      id: WF_ID,
+      orgId: "org-1",
+      workflowSlug: DYNASTY,
+      workflowName: "Sales Cold Email Outreach Sequoia",
+      workflowDynastySlug: DYNASTY,
+      workflowDynastyName: "Sales Cold Email Outreach Sequoia",
+      featureSlug: "sales-cold-email-outreach",
+      version: 1,
+      status: "active",
+      workflowDynastyStatus: "active",
+      dag: VALID_LINEAR_DAG,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      ...overrides,
+    });
+  }
+
+  it("deprecates a dynasty and returns the locked response shape", async () => {
+    pushDynastyRow();
+
+    const res = await request
+      .put(`/workflows/dynasty/${DYNASTY}/status`)
+      .set(AUTH)
+      .send({ status: "deprecated" });
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ workflowDynastySlug: DYNASTY, status: "deprecated" });
+  });
+
+  it("round-trip: list reflects the dynasty status after deprecate then reactivate", async () => {
+    pushDynastyRow();
+
+    // Initially active
+    let list = await request.get("/workflows").set(AUTH);
+    expect(list.status).toBe(200);
+    expect(list.body.workflows[0].status).toBe("active");
+
+    // Deprecate the dynasty
+    const dep = await request
+      .put(`/workflows/dynasty/${DYNASTY}/status`)
+      .set(AUTH)
+      .send({ status: "deprecated" });
+    expect(dep.status).toBe(200);
+
+    list = await request.get("/workflows").set(AUTH);
+    expect(list.body.workflows[0].status).toBe("deprecated");
+    expect(list.body.workflows[0].workflowDynastyStatus).toBe("deprecated");
+
+    // Reactivate
+    const act = await request
+      .put(`/workflows/dynasty/${DYNASTY}/status`)
+      .set(AUTH)
+      .send({ status: "active" });
+    expect(act.status).toBe(200);
+
+    list = await request.get("/workflows").set(AUTH);
+    expect(list.body.workflows[0].status).toBe("active");
+    expect(list.body.workflows[0].workflowDynastyStatus).toBe("active");
+  });
+
+  it("is idempotent — re-applying the same status succeeds", async () => {
+    pushDynastyRow({ workflowDynastyStatus: "deprecated" });
+
+    const first = await request
+      .put(`/workflows/dynasty/${DYNASTY}/status`)
+      .set(AUTH)
+      .send({ status: "deprecated" });
+    expect(first.status).toBe(200);
+    expect(first.body.status).toBe("deprecated");
+
+    const second = await request
+      .put(`/workflows/dynasty/${DYNASTY}/status`)
+      .set(AUTH)
+      .send({ status: "deprecated" });
+    expect(second.status).toBe(200);
+    expect(second.body.status).toBe("deprecated");
+  });
+
+  it("returns 404 for an unknown dynasty slug", async () => {
+    const res = await request
+      .put("/workflows/dynasty/does-not-exist/status")
+      .set(AUTH)
+      .send({ status: "deprecated" });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("rejects an invalid status value with 400", async () => {
+    pushDynastyRow();
+
+    const res = await request
+      .put(`/workflows/dynasty/${DYNASTY}/status`)
+      .set(AUTH)
+      .send({ status: "archived" });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("requires authentication", async () => {
+    const res = await request
+      .put(`/workflows/dynasty/${DYNASTY}/status`)
+      .set(IDENTITY)
+      .send({ status: "deprecated" });
+
+    expect(res.status).toBe(401);
+  });
+});

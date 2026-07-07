@@ -218,7 +218,8 @@ export const WorkflowResponseSchema = z
     workflowDynastySignatureName: z.string().describe("Poetic word for this lineage (e.g. 'sequoia'). Set once at lineage creation. Unique among all workflows (any status, any org) within the same featureSlug."),
     version: z.number().int().describe("Version number within the lineage. Starts at 1."),
     dag: z.unknown().describe("The DAG definition as submitted."),
-    status: z.enum(["active", "deprecated"]).describe("Workflow lifecycle status. Only active workflows can be executed."),
+    status: z.enum(["active", "deprecated"]).describe("Per-version lifecycle status. Only active workflows can be executed. Within a dynasty the latest version is 'active' and predecessors are 'deprecated'. Distinct from `workflowDynastyStatus`."),
+    workflowDynastyStatus: z.enum(["active", "deprecated"]).describe("Dynasty-level status. 'deprecated' means the entire lineage was deprecated on demand (staff action); 'active' otherwise. Constant across all versions of a dynasty. Set via PUT /workflows/dynasty/{workflowDynastySlug}/status."),
     creationType: z.enum(["scratch", "upgrade", "fork"]).describe(
       "How this workflow was created: 'scratch' = brand-new dynasty, 'upgrade' = new version of an existing dynasty, 'fork' = forked from another workflow."
     ),
@@ -278,6 +279,7 @@ export const WorkflowMutationResponseSchema = WorkflowResponseSchema.extend({
       ],
     },
     status: "active",
+    workflowDynastyStatus: "active",
     creationType: "fork",
     createdFromWorkflow: "3f8db0d4-ec80-4d06-805d-13b7df8703f9",
     createdByUserId: "cfe148ed-e3d8-40a2-8920-f8c040a81934",
@@ -703,6 +705,13 @@ export const ProviderRequirementsResponseSchema = z
   .openapi("ProviderRequirementsResponse");
 
 export const WorkflowListItemSchema = WorkflowResponseSchema.extend({
+  status: z.enum(["active", "deprecated"]).describe(
+    "Dynasty status ('active' | 'deprecated'). On the list surface this field " +
+    "reflects the item's DYNASTY status (mirrors `workflowDynastyStatus`) so the " +
+    "dashboard can render one active/deprecated flag per dynasty row. (On the " +
+    "single-workflow GET /workflows/{id} surface, `status` is the per-version " +
+    "lifecycle status instead.)"
+  ),
   requiredProviders: z.array(ProviderInfoSchema).describe(
     "Providers required by this workflow (with domain info for logo lookup). " +
     "Empty array if the workflow has no http.call nodes. Computed via a single " +
@@ -710,6 +719,24 @@ export const WorkflowListItemSchema = WorkflowResponseSchema.extend({
     "fan out N follow-up requests to /workflows/{id}/required-providers."
   ),
 }).openapi("WorkflowListItem");
+
+// --- Dynasty status write (PUT /workflows/dynasty/{workflowDynastySlug}/status) ---
+
+export const DynastyStatusUpdateSchema = z
+  .object({
+    status: z.enum(["active", "deprecated"]).describe(
+      "New dynasty-level status. 'deprecated' marks the entire lineage deprecated; " +
+      "'active' reactivates it. Idempotent — re-applying the same status is a no-op success."
+    ),
+  })
+  .openapi("DynastyStatusUpdate");
+
+export const DynastyStatusResponseSchema = z
+  .object({
+    workflowDynastySlug: z.string().describe("The dynasty slug whose status was set."),
+    status: z.enum(["active", "deprecated"]).describe("The dynasty's status after the write."),
+  })
+  .openapi("DynastyStatusResponse");
 
 // --- Workflow conflict response (409 on PUT /workflows/:id) ---
 
@@ -907,6 +934,41 @@ registry.registerPath({
     },
     400: {
       description: "Missing query parameter",
+      content: { "application/json": { schema: ErrorResponseSchema } },
+    },
+    404: {
+      description: "No workflows found for this dynasty slug",
+      content: { "application/json": { schema: ErrorResponseSchema } },
+    },
+  },
+});
+
+registry.registerPath({
+  method: "put",
+  path: "/workflows/dynasty/{workflowDynastySlug}/status",
+  summary: "Set a workflow dynasty's status (active/deprecated)",
+  description:
+    "Marks an entire workflow dynasty (lineage) active or deprecated. Applies to " +
+    "every version in the dynasty. Idempotent — re-applying the same status is a " +
+    "no-op success. Does not affect the per-version lifecycle `status` or execution " +
+    "resolution; it only sets the dynasty-level flag surfaced as `status` on GET /workflows.",
+  tags: ["Workflows"],
+  security: [{ apiKey: [] }],
+  request: {
+    headers: IdentityHeaders,
+    params: z.object({ workflowDynastySlug: z.string() }),
+    body: {
+      required: true,
+      content: { "application/json": { schema: DynastyStatusUpdateSchema } },
+    },
+  },
+  responses: {
+    200: {
+      description: "Dynasty status set",
+      content: { "application/json": { schema: DynastyStatusResponseSchema } },
+    },
+    400: {
+      description: "Invalid body",
       content: { "application/json": { schema: ErrorResponseSchema } },
     },
     404: {
