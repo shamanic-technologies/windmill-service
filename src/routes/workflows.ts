@@ -14,6 +14,7 @@ import {
   UpdateWorkflowSchema,
   CreateWorkflowFromDescriptionSchema,
   UpgradeWorkflowFromDescriptionSchema,
+  DynastyStatusUpdateSchema,
 } from "../schemas.js";
 import {
   generateWorkflow,
@@ -758,6 +759,43 @@ router.get("/workflows/dynasty/stats", requireApiKey, async (req, res) => {
   }
 });
 
+// PUT /workflows/dynasty/:workflowDynastySlug/status — Set a whole dynasty's
+// status (active/deprecated). Dynasty-scoped: flips workflow_dynasty_status on
+// EVERY version in the lineage. Idempotent (re-applying the same status is a
+// no-op success). Independent of the per-version `status` and execution
+// resolution — purely the dynasty-level flag surfaced on GET /workflows.
+router.put("/workflows/dynasty/:workflowDynastySlug/status", requireApiKey, async (req, res) => {
+  try {
+    const { workflowDynastySlug } = req.params;
+    const body = DynastyStatusUpdateSchema.parse(req.body);
+
+    // Existence check: unknown dynasty slug → 404.
+    const [existing] = await db
+      .select({ id: workflows.id })
+      .from(workflows)
+      .where(eq(workflows.workflowDynastySlug, workflowDynastySlug));
+
+    if (!existing) {
+      res.status(404).json({ error: `No workflows found for workflowDynastySlug: ${workflowDynastySlug}` });
+      return;
+    }
+
+    await db
+      .update(workflows)
+      .set({ workflowDynastyStatus: body.status, updatedAt: new Date() })
+      .where(eq(workflows.workflowDynastySlug, workflowDynastySlug));
+
+    res.json({ workflowDynastySlug, status: body.status });
+  } catch (err: unknown) {
+    if (err instanceof Error && err.name === "ZodError") {
+      res.status(400).json({ error: "Validation error", details: err });
+      return;
+    }
+    console.error("[workflow-service] PUT dynasty status error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 // GET /workflows — List workflows (defaults to active only; ?status=all for all)
 // Each item is enriched with `requiredProviders` so the caller does not need
 // to fan out N follow-up requests to /workflows/:id/required-providers.
@@ -875,6 +913,9 @@ router.get("/workflows", requireApiKey, async (req, res) => {
       }
       return {
         ...formatWorkflow(w),
+        // Locked list contract: `status` reflects the item's DYNASTY status
+        // (active/deprecated) so the dashboard renders one flag per dynasty row.
+        status: w.workflowDynastyStatus,
         requiredProviders: enrichProvidersWithDomains([...providers].sort()),
       };
     });

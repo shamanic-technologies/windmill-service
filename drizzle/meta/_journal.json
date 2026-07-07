@@ -239,6 +239,13 @@
       "when": 1781654400000,
       "tag": "0033_add_workflow_run_attribution_context",
       "breakpoints": true
+    },
+    {
+      "idx": 34,
+      "version": "7",
+      "when": 1783728000000,
+      "tag": "0034_add_workflow_dynasty_status",
+      "breakpoints": true
     }
   ]
 }
