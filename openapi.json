@@ -160,7 +160,15 @@
               "active",
               "deprecated"
             ],
-            "description": "Workflow lifecycle status. Only active workflows can be executed."
+            "description": "Per-version lifecycle status. Only active workflows can be executed. Within a dynasty the latest version is 'active' and predecessors are 'deprecated'. Distinct from `workflowDynastyStatus`."
+          },
+          "workflowDynastyStatus": {
+            "type": "string",
+            "enum": [
+              "active",
+              "deprecated"
+            ],
+            "description": "Dynasty-level status. 'deprecated' means the entire lineage was deprecated on demand (staff action); 'active' otherwise. Constant across all versions of a dynasty. Set via PUT /workflows/dynasty/{workflowDynastySlug}/status."
           },
           "creationType": {
             "type": "string",
@@ -224,6 +232,7 @@
           "workflowDynastySignatureName",
           "version",
           "status",
+          "workflowDynastyStatus",
           "creationType",
           "createdFromWorkflow",
           "createdByUserId",
@@ -535,6 +544,43 @@
           "dag"
         ]
       },
+      "DynastyStatusResponse": {
+        "type": "object",
+        "properties": {
+          "workflowDynastySlug": {
+            "type": "string",
+            "description": "The dynasty slug whose status was set."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "deprecated"
+            ],
+            "description": "The dynasty's status after the write."
+          }
+        },
+        "required": [
+          "workflowDynastySlug",
+          "status"
+        ]
+      },
+      "DynastyStatusUpdate": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "deprecated"
+            ],
+            "description": "New dynasty-level status. 'deprecated' marks the entire lineage deprecated; 'active' reactivates it. Idempotent — re-applying the same status is a no-op success."
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
       "ProviderInfo": {
         "type": "object",
         "properties": {
@@ -561,6 +607,14 @@
           {
             "type": "object",
             "properties": {
+              "status": {
+                "type": "string",
+                "enum": [
+                  "active",
+                  "deprecated"
+                ],
+                "description": "Dynasty status ('active' | 'deprecated'). On the list surface this field reflects the item's DYNASTY status (mirrors `workflowDynastyStatus`) so the dashboard can render one active/deprecated flag per dynasty row. (On the single-workflow GET /workflows/{id} surface, `status` is the per-version lifecycle status instead.)"
+              },
               "requiredProviders": {
                 "type": "array",
                 "items": {
@@ -726,6 +780,7 @@
             ]
           },
           "status": "active",
+          "workflowDynastyStatus": "active",
           "creationType": "fork",
           "createdFromWorkflow": "3f8db0d4-ec80-4d06-805d-13b7df8703f9",
           "createdByUserId": "cfe148ed-e3d8-40a2-8920-f8c040a81934",
@@ -2313,6 +2368,142 @@
           },
           "400": {
             "description": "Missing query parameter",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No workflows found for this dynasty slug",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/workflows/dynasty/{workflowDynastySlug}/status": {
+      "put": {
+        "summary": "Set a workflow dynasty's status (active/deprecated)",
+        "description": "Marks an entire workflow dynasty (lineage) active or deprecated. Applies to every version in the dynasty. Idempotent — re-applying the same status is a no-op success. Does not affect the per-version lifecycle `status` or execution resolution; it only sets the dynasty-level flag surfaced as `status` on GET /workflows.",
+        "tags": [
+          "Workflows"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": true,
+            "name": "workflowDynastySlug",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Internal org UUID (from client-service). Required."
+            },
+            "required": true,
+            "description": "Internal org UUID (from client-service). Required.",
+            "name": "x-org-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Internal user UUID (from client-service). Required."
+            },
+            "required": true,
+            "description": "Internal user UUID (from client-service). Required.",
+            "name": "x-user-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Run ID for tracing across services. Required."
+            },
+            "required": true,
+            "description": "Run ID for tracing across services. Required.",
+            "name": "x-run-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Campaign ID for tracking. Optional on non-execute endpoints."
+            },
+            "required": false,
+            "description": "Campaign ID for tracking. Optional on non-execute endpoints.",
+            "name": "x-campaign-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Brand ID(s) as CSV (e.g. 'uuid1,uuid2'). Optional on non-execute endpoints."
+            },
+            "required": false,
+            "description": "Brand ID(s) as CSV (e.g. 'uuid1,uuid2'). Optional on non-execute endpoints.",
+            "name": "x-brand-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Workflow slug for tracking. Optional on non-execute endpoints."
+            },
+            "required": false,
+            "description": "Workflow slug for tracking. Optional on non-execute endpoints.",
+            "name": "x-workflow-slug",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Feature slug from features-service. Optional on non-execute endpoints."
+            },
+            "required": false,
+            "description": "Feature slug from features-service. Optional on non-execute endpoints.",
+            "name": "x-feature-slug",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DynastyStatusUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Dynasty status set",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DynastyStatusResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body",
             "content": {
               "application/json": {
                 "schema": {

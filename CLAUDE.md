@@ -83,6 +83,8 @@ The bare word `dynasty` does not exist in this repo — always `workflow_dynasty
 | `signature` | text | Unique per `(feature_slug, status='active')` | Hash of the DAG structure. Used for deduplication on upgrade. |
 | `version` | integer | No | Version number within the dynasty. Starts at 1. |
 | `feature_slug` | text | No | Reference to the feature in features-service. Passed by clients. |
+| `status` | text | (partial unique index) | **Per-version** lifecycle. Within a dynasty the latest version is `active`, predecessors `deprecated`. Load-bearing for `idx_workflows_active_signame` + upgrade/execute resolution — do NOT overload for dynasty-level deprecation. |
+| `workflow_dynasty_status` | text, NOT NULL, default `active`, CHECK in (`active`,`deprecated`) | No | **Dynasty-level** status, independent of `status`. Same value across all versions of a dynasty. Set via `PUT /workflows/dynasty/{workflowDynastySlug}/status`. Migration 0034. |
 
 ### Name composition
 
@@ -115,6 +117,16 @@ Lineage is tracked by two forward-pointing columns on every workflow row:
 | `created_from_workflow` | uuid, nullable | Predecessor row id. Null only when `creation_type='scratch'`. |
 
 The legacy `upgraded_to` and `forked_from` columns are gone. The successor of a deprecated row is found by reverse lookup: `SELECT id FROM workflows WHERE created_from_workflow = <deprecated.id> AND creation_type = 'upgrade'`.
+
+### Dynasty status vs per-version status (two orthogonal axes)
+
+There are TWO status axes and they must not be conflated:
+- **Per-version `status`** (`active`/`deprecated`) — version lifecycle within a dynasty (latest active, predecessors deprecated). Load-bearing for the partial unique index + upgrade/execute forward-resolution.
+- **`workflow_dynasty_status`** (`active`/`deprecated`) — the WHOLE lineage's on-demand deprecation flag (staff action). Same value on every version row.
+
+**Set — `PUT /workflows/dynasty/{workflowDynastySlug}/status`** (locked wire contract, api-service transparent-proxies): body `{ status: "active"|"deprecated" }` → 200 `{ workflowDynastySlug, status }`. Flips `workflow_dynasty_status` on EVERY version in the lineage. Idempotent (re-applying same status = no-op 200). Unknown dynasty slug → 404. Purely a metadata flag: does NOT touch per-version `status`, execution resolution, or Windmill flows.
+
+**Read — `GET /workflows` list:** the emitted `status` field is OVERRIDDEN to the item's **dynasty** status per the locked contract (so the dashboard renders one active/deprecated flag per dynasty row). `workflowDynastyStatus` is also exposed self-documenting on all workflow responses. On single-workflow `GET /workflows/{id}`, `status` stays the per-version lifecycle value. When threading a new dynasty-level flag, add a column + write it on ALL lineage rows; do NOT overload `status`.
 
 ### Operations and behavior
 

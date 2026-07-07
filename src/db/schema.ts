@@ -34,6 +34,10 @@ export const workflows = pgTable(
     dag: jsonb("dag").notNull(),
     tags: jsonb("tags").default([]),
     status: text("status").notNull().default("active"),
+    // Dynasty-level status, independent of the per-version `status` above. Marks
+    // an entire lineage active/deprecated on demand (staff action). All rows
+    // sharing a workflow_dynasty_slug carry the same value.
+    workflowDynastyStatus: text("workflow_dynasty_status").notNull().default("active"),
     creationType: text("creation_type").notNull().default("scratch"),
     createdFromWorkflow: uuid("created_from_workflow"),
     createdByUserId: text("created_by_user_id"),
