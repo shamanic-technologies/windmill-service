@@ -65,4 +65,39 @@ router.get("/public/workflows", requireApiKey, async (req, res) => {
   }
 });
 
+// GET /workflows/dynasty/slugs — Resolve a dynasty slug to all versioned workflow slugs.
+// Mounted on the public router (before requireIdentity) because a dynasty slug is a
+// global (cross-org) identifier: public / org-less callers (runs-service public cost
+// timeseries, email-gateway public stats) resolve it with a service api-key only and
+// have no per-user identity to supply. Authenticated callers still work — they pass
+// requireApiKey the same way. No org/user scope is read in the handler.
+router.get("/workflows/dynasty/slugs", requireApiKey, async (req, res) => {
+  try {
+    const workflowDynastySlug = req.query.workflowDynastySlug;
+    if (!workflowDynastySlug || typeof workflowDynastySlug !== "string") {
+      res.status(400).json({ error: "Missing required query parameter: workflowDynastySlug" });
+      return;
+    }
+
+    const matching = await db
+      .select({ workflowSlug: workflows.workflowSlug, workflowDynastyName: workflows.workflowDynastyName })
+      .from(workflows)
+      .where(eq(workflows.workflowDynastySlug, workflowDynastySlug));
+
+    if (matching.length === 0) {
+      res.status(404).json({ error: `No workflows found for workflowDynastySlug: ${workflowDynastySlug}` });
+      return;
+    }
+
+    res.json({
+      workflowDynastySlug,
+      workflowDynastyName: matching[0].workflowDynastyName,
+      workflowSlugs: matching.map((w) => w.workflowSlug),
+    });
+  } catch (err) {
+    console.error("[workflow-service] GET dynasty/slugs error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 export default router;

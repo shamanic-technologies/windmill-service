@@ -663,35 +663,10 @@ router.get("/workflows/dynasties", requireApiKey, async (req, res) => {
   }
 });
 
-// GET /workflows/dynasty/slugs — Resolve a dynasty slug to all versioned workflow slugs
-router.get("/workflows/dynasty/slugs", requireApiKey, async (req, res) => {
-  try {
-    const workflowDynastySlug = req.query.workflowDynastySlug;
-    if (!workflowDynastySlug || typeof workflowDynastySlug !== "string") {
-      res.status(400).json({ error: "Missing required query parameter: workflowDynastySlug" });
-      return;
-    }
-
-    const matching = await db
-      .select({ workflowSlug: workflows.workflowSlug, workflowDynastyName: workflows.workflowDynastyName })
-      .from(workflows)
-      .where(eq(workflows.workflowDynastySlug, workflowDynastySlug));
-
-    if (matching.length === 0) {
-      res.status(404).json({ error: `No workflows found for workflowDynastySlug: ${workflowDynastySlug}` });
-      return;
-    }
-
-    res.json({
-      workflowDynastySlug,
-      workflowDynastyName: matching[0].workflowDynastyName,
-      workflowSlugs: matching.map((w) => w.workflowSlug),
-    });
-  } catch (err) {
-    console.error("[workflow-service] GET dynasty/slugs error:", err);
-    res.status(500).json({ error: "Internal server error" });
-  }
-});
+// NOTE: GET /workflows/dynasty/slugs moved to src/routes/public-workflows.ts.
+// It resolves a global (cross-org) dynasty slug and is called by org-less, api-key-only
+// callers (runs-service / email-gateway public analytics), so it must sit BEFORE the
+// global requireIdentity gate. Keeping it here shadowed it → 400 "identity headers required".
 
 // GET /workflows/dynasty/stats — Aggregated stats for a dynasty (full upgrade chain)
 router.get("/workflows/dynasty/stats", requireApiKey, async (req, res) => {
