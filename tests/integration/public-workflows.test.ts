@@ -268,3 +268,84 @@ describe("GET /public/workflows", () => {
     expect(res.body.workflows).toEqual([]);
   });
 });
+
+// ==================== GET /workflows/dynasty/slugs ====================
+// Regression (features-service #526): this route resolves a global cross-org dynasty
+// slug for org-less, api-key-only callers (runs-service / email-gateway public analytics).
+// It must succeed with NO x-org-id / x-user-id / x-run-id — previously it lived behind
+// the global requireIdentity gate and 400'd "identity headers required".
+
+describe("GET /workflows/dynasty/slugs", () => {
+  const API_KEY = { "x-api-key": "test-api-key" };
+
+  beforeEach(() => {
+    mockWorkflowRows.length = 0;
+  });
+
+  it("resolves dynasty slug to versioned slugs with api-key and NO identity headers", async () => {
+    const v1 = makeWorkflow({
+      id: "wf-d1",
+      workflowSlug: "sales-cold-outreach-obsidian",
+      workflowDynastySlug: "sales-cold-outreach-obsidian",
+      workflowDynastyName: "Sales Cold Outreach Obsidian",
+      version: 1,
+    });
+    const v2 = makeWorkflow({
+      id: "wf-d2",
+      workflowSlug: "sales-cold-outreach-obsidian-v2",
+      workflowDynastySlug: "sales-cold-outreach-obsidian",
+      workflowDynastyName: "Sales Cold Outreach Obsidian",
+      version: 2,
+    });
+    mockWorkflowRows.push(v1, v2);
+
+    // Deliberately send ONLY the api-key — no x-org-id / x-user-id / x-run-id.
+    const res = await request
+      .get("/workflows/dynasty/slugs")
+      .set(API_KEY)
+      .query({ workflowDynastySlug: "sales-cold-outreach-obsidian" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.workflowDynastySlug).toBe("sales-cold-outreach-obsidian");
+    expect(res.body.workflowDynastyName).toBe("Sales Cold Outreach Obsidian");
+    expect(res.body.workflowSlugs).toEqual(
+      expect.arrayContaining([
+        "sales-cold-outreach-obsidian",
+        "sales-cold-outreach-obsidian-v2",
+      ]),
+    );
+  });
+
+  it("still works for identity-scoped callers (identity headers present)", async () => {
+    mockWorkflowRows.push(makeWorkflow({ id: "wf-d3" }));
+
+    const res = await request
+      .get("/workflows/dynasty/slugs")
+      .set(API_KEY)
+      .set({ "x-org-id": "org1", "x-user-id": "user1", "x-run-id": "run1" })
+      .query({ workflowDynastySlug: DEFAULT_WF_SLUG });
+
+    expect(res.status).toBe(200);
+    expect(res.body.workflowSlugs).toContain(DEFAULT_WF_SLUG);
+  });
+
+  it("returns 401 without x-api-key", async () => {
+    const res = await request
+      .get("/workflows/dynasty/slugs")
+      .query({ workflowDynastySlug: "x" });
+    expect(res.status).toBe(401);
+  });
+
+  it("returns 400 when workflowDynastySlug is missing", async () => {
+    const res = await request.get("/workflows/dynasty/slugs").set(API_KEY);
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 404 when no workflows match the dynasty slug", async () => {
+    const res = await request
+      .get("/workflows/dynasty/slugs")
+      .set(API_KEY)
+      .query({ workflowDynastySlug: "does-not-exist" });
+    expect(res.status).toBe(404);
+  });
+});
