@@ -15,10 +15,15 @@ interface SpecWatcherDeps {
   windmillClient: WindmillClient | null;
 }
 
-const INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+// 1 hour. NOT tunable down without re-checking the Neon bill: every tick opens
+// with a `SELECT` over active workflows, so a period shorter than the compute's
+// idle timeout (300s) holds the compute open permanently and scale-to-zero
+// never engages. Spec drift does not need minute-level granularity — boot
+// already validates, and upgrades can be triggered on demand.
+const INTERVAL_MS = 60 * 60 * 1000;
 
 /**
- * Watches for OpenAPI spec changes every 5 minutes.
+ * Watches for OpenAPI spec changes once an hour.
  * The check itself is free (HTTP + CPU hash comparison).
  * Only triggers LLM-powered upgrades when specs actually changed
  * AND the change breaks an active workflow.
@@ -35,7 +40,7 @@ export class SpecWatcher {
 
   start(): void {
     if (this.timer) return;
-    console.log("[workflow-service] SpecWatcher started — checking every 5 minutes");
+    console.log("[workflow-service] SpecWatcher started — checking every 60 minutes");
     this.timer = setInterval(() => void this.check(), INTERVAL_MS);
   }
 
@@ -138,7 +143,7 @@ export class SpecWatcher {
       return;
     }
 
-    // LLM auto-upgrade DISABLED — was burning Gemini credits every 5 minutes.
+    // LLM auto-upgrade DISABLED — was burning Gemini credits on every tick.
     // Just log the issue; do NOT call validateAndUpgradeWorkflows which triggers LLM.
     console.warn(
       "[workflow-service] SpecWatcher: spec change broke workflow(s) — LLM upgrade disabled, skipping",

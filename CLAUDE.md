@@ -76,6 +76,16 @@ Three pieces hold it together:
 
 Measured on 2026-07-31 against a database that never answers: pre-fix the port never opened and the process exited 1 at 30.3s; post-fix the port opened at 0.88s, `/health` answered 200 at 0.97s, gated routes returned 503, and the container stayed up retrying. On the real suspended staging compute the pre-fix bind cost 2.14s — i.e. pre-fix, time-to-port-open simply *is* the compute's resume time, whatever it happens to be that day.
 
+### No background loop may query the database unconditionally
+
+Scale-to-zero only pays off if the compute actually reaches its idle timeout (300s). **Any periodic loop that opens with a `SELECT` on a period shorter than that pins the compute open forever, and the whole billing period is charged as active even when nothing executed** — the setting looks enabled and saves nothing.
+
+- **`JobPoller`** (10s) **stops itself** once no run is `queued` or `running`, and `wakeJobPoller()` restarts it from `markExecutionDispatched` — the single place a run becomes pollable. The `wokenDuringPoll` flag is load-bearing: it is cleared *before* the query so a dispatch landing between the query and the idle check cannot be swallowed. If you add another path that makes a run pollable, it must call `wakeJobPoller()` or that run is never reconciled.
+- **`SpecWatcher`** runs hourly, not every 5 minutes. Do not lower it back below the idle timeout.
+- **`PeriodicCleanup`** (24h) is fine — it wakes the compute once a day.
+
+Before adding any `setInterval` that touches the database, ask what keeps it from holding the compute open. On-demand or wake-on-write beats a timer.
+
 **Failures inside `boot()` still exit the process** (API Registry unreachable, Windmill node deploy failure). Because the port is already bound, Railway grades the deploy SUCCESS first and only marks it CRASHED once `restartPolicyMaxRetries: 10` is exhausted — so when a staging/prod deploy looks green but the service is unreachable, read the container logs for a post-listen `process.exit(1)` rather than assuming the deploy is fine.
 
 ## Workflow naming and versioning
