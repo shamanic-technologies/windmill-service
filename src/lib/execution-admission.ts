@@ -2,6 +2,7 @@ import { and, eq, inArray, lt, sql } from "drizzle-orm";
 import { workflowRuns, type Workflow, type WorkflowRun } from "../db/schema.js";
 import type { db as DbInstance } from "../db/index.js";
 import type { CampaignAttributionContext } from "./attribution-context.js";
+import { wakeJobPoller } from "./job-poller.js";
 
 type Database = typeof DbInstance;
 
@@ -139,6 +140,12 @@ export async function markExecutionDispatched(
     })
     .where(eq(workflowRuns.id, workflowRunId))
     .returning();
+
+  // This is the only place a run becomes pollable. The poller idles itself when
+  // nothing is queued or running (so an idle Neon compute can actually suspend),
+  // so it has to be woken here or the run is never reconciled.
+  wakeJobPoller();
+
   return updated;
 }
 
