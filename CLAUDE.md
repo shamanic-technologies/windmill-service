@@ -49,7 +49,7 @@ Workflow orchestration service powered by Windmill. Translates internal DAG form
 
 ## Database migrations
 
-Migrations are **auto-applied on startup** via `drizzle-orm/postgres-js/migrator` (see `src/index.ts`). The service runs `migrate(db, { migrationsFolder: "./drizzle" })` before listening.
+Migrations are **auto-applied on startup** via `drizzle-orm/postgres-js/migrator` (see `src/index.ts`), inside `boot()` — which runs **after** `app.listen()`. See "Boot order" below before touching `src/index.ts`.
 
 **All migrations MUST go in `drizzle/`** — never create a separate `migrations/` folder. The startup migrator only reads from `drizzle/`.
 
@@ -59,6 +59,24 @@ When adding a migration:
 3. Use `IF NOT EXISTS` / `DO $$ BEGIN ... END $$` guards to make migrations idempotent
 4. Use `--> statement-breakpoint` between statements (drizzle convention)
 5. Commit the migration file + journal update in the same PR as the schema change
+
+## Boot order — the port binds BEFORE any database work
+
+**Nothing may be `await`ed before `app.listen()`.** Neon suspends an idle compute and takes seconds to resume, so anything awaited before the bind spends the deploy's startup budget on the first connection: the port never opens inside Railway's ~30s healthcheck window and the deploy is marked FAILED, or the connection rejects and the process exits into a restart loop. The failure has nothing to do with the code being deployed, which is what makes it expensive to diagnose — it reads as a flaky deploy, you retry against a now-warm compute, it passes, and the cause is never found. `tests/unit/boot-order.test.ts` asserts this at the source level (`awaits nothing before app.listen()`); it is the regression guard, do not relax it.
+
+The startup block does only pure env inspection (`assertEnvironmentConsistency`), flips readiness to pending, registers shutdown handlers, binds, then calls `boot()`. Everything else — migrations, the API Registry health check, Windmill retention + node deploy, the job poller, `validateAndUpgradeWorkflows`, the SpecWatcher — lives inside `boot()`.
+
+Three pieces hold it together:
+
+- **`src/lib/migrate-with-retry.ts`** retries **only** connect-phase failures (`CONNECT_TIMEOUT`, `CONNECTION_CLOSED`, `ECONNREFUSED`, `ECONNRESET`, happy-eyeballs `AggregateError`s, `the database system is starting up`, …) with 250ms doubling backoff up to a 120s deadline. Nothing has run when a connection is refused, so the retry is write-safe. A **genuine** migration failure (bad SQL, constraint violation) is never retried and never swallowed — it marks the schema failed, logs `FATAL`, and exits.
+- **`src/lib/schema-readiness.ts`** gates every DB-touching route behind 503 + `Retry-After` until migrations have been applied, so the early bind can never serve traffic against a schema the code does not expect. The flag defaults to `"pending"` — a process that never declares itself ready serves 503 rather than querying. **A new router that touches the database must be mounted BELOW `app.use(requireSchemaReady)`.**
+- **`/health`** answers `200 {"status":"starting","migrations":"pending"}` while migrations are pending and **deliberately does not touch the database** — probing a resuming compute inside the healthcheck window is the exact call that was blowing the deploy. Once ready it goes back to the live `SELECT 1` / Windmill checks, each bounded at 2s. Do not add an unbounded dependency probe to this route.
+
+`src/db/index.ts` sets `net.setDefaultAutoSelectFamilyAttemptTimeout(5000)` — Node 20 gives each happy-eyeballs candidate address only 250ms, which expires before a Neon resume completes. Do **not** add postgres.js `connect_timeout` (already defaults to 30s — a no-op) or `idle_timeout` (defaults to never closing an idle connection; setting it forces a fresh TCP+TLS handshake on the next request — a regression; that advice is correct for node-postgres, not postgres.js). Both were tried and reverted in brand-service#389.
+
+Measured on 2026-07-31 against a database that never answers: pre-fix the port never opened and the process exited 1 at 30.3s; post-fix the port opened at 0.88s, `/health` answered 200 at 0.97s, gated routes returned 503, and the container stayed up retrying. On the real suspended staging compute the pre-fix bind cost 2.14s — i.e. pre-fix, time-to-port-open simply *is* the compute's resume time, whatever it happens to be that day.
+
+**Failures inside `boot()` still exit the process** (API Registry unreachable, Windmill node deploy failure). Because the port is already bound, Railway grades the deploy SUCCESS first and only marks it CRASHED once `restartPolicyMaxRetries: 10` is exhausted — so when a staging/prod deploy looks green but the service is unreachable, read the container logs for a post-listen `process.exit(1)` rather than assuming the deploy is fine.
 
 ## Workflow naming and versioning
 
