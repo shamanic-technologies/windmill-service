@@ -202,7 +202,7 @@ export async function validateAndUpgradeWorkflows(
   }
 }
 
-async function syncFlowToWindmill(
+export async function syncFlowToWindmill(
   wf: Workflow,
   windmillClient: WindmillClient,
 ): Promise<void> {
@@ -212,12 +212,27 @@ async function syncFlowToWindmill(
 
   const dag = wf.dag as DAG;
   const openFlow = dagToOpenFlow(dag, wf.workflowSlug);
-
-  await windmillClient.updateFlow(wf.windmillFlowPath, {
+  const body = {
     summary: wf.workflowSlug,
     description: wf.description ?? "",
     value: openFlow.value,
     schema: openFlow.schema,
-  });
+  };
+
+  try {
+    await windmillClient.updateFlow(wf.windmillFlowPath, body);
+  } catch (err) {
+    // The row says a flow lives at this path and Windmill disagrees. Update
+    // alone can never recover from that: the workflow stays active, every
+    // execute 404s on the missing flow, and the next boot fails the same way.
+    // Recreating at the recorded path is what the row already asserts should
+    // exist, and is a no-op wherever the flow is present.
+    if (!(err instanceof Error) || !err.message.includes("404")) throw err;
+
+    console.warn(
+      `[workflow-service] Flow missing in Windmill for "${wf.workflowSlug}" at ${wf.windmillFlowPath} — recreating`,
+    );
+    await windmillClient.createFlow({ path: wf.windmillFlowPath, ...body });
+  }
 }
 
