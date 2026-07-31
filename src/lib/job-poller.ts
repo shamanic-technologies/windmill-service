@@ -6,9 +6,25 @@ import { attributionContextToHeaders } from "./attribution-context.js";
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+/**
+ * Polls Windmill for the outcome of dispatched jobs.
+ *
+ * The poller **stops itself once no run is queued or running**, and is woken by
+ * `wakeJobPoller()` when a run is dispatched. An unconditional `SELECT` every
+ * 10s would hold the Neon compute open forever, which defeats scale-to-zero:
+ * the compute never reaches its idle timeout, so the whole billing period is
+ * charged as active even when nothing has executed.
+ */
 export class JobPoller {
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private isPolling = false;
+  /**
+   * Set by `wake()`. Cleared at the top of `poll()`, i.e. BEFORE the query, so
+   * a run dispatched while a poll is in flight always keeps the poller alive —
+   * without it, a wake landing between the query and the idle check would be
+   * swallowed and the run would never be reconciled.
+   */
+  private wokenDuringPoll = false;
 
   constructor(
     private db: any,
@@ -31,9 +47,23 @@ export class JobPoller {
     }
   }
 
+  isRunning(): boolean {
+    return this.intervalId !== null;
+  }
+
+  /** A run was just dispatched — there is work to reconcile. */
+  wake(): void {
+    this.wokenDuringPoll = true;
+    if (!this.intervalId) {
+      console.log("[workflow-service] JobPoller woken by a dispatched run");
+    }
+    this.start();
+  }
+
   private async poll(): Promise<void> {
     if (this.isPolling) return;
     this.isPolling = true;
+    this.wokenDuringPoll = false;
 
     try {
       const table = this.workflowRunsTable;
@@ -41,6 +71,14 @@ export class JobPoller {
         .select()
         .from(table)
         .where(inArray(table.status, ["queued", "running"]));
+
+      if (activeRuns.length === 0 && !this.wokenDuringPoll) {
+        console.log(
+          "[workflow-service] JobPoller: no queued or running runs — idling until the next dispatch",
+        );
+        this.stop();
+        return;
+      }
 
       for (const run of activeRuns) {
         if (!run.windmillJobId) continue;
@@ -112,4 +150,26 @@ export class JobPoller {
       this.isPolling = false;
     }
   }
+}
+
+/**
+ * The single poller owned by `boot()`. Null when Windmill is not configured —
+ * nothing is dispatched in that case, so there is nothing to wake.
+ */
+let sharedPoller: JobPoller | null = null;
+
+export function setJobPoller(poller: JobPoller | null): void {
+  sharedPoller = poller;
+}
+
+export function getJobPoller(): JobPoller | null {
+  return sharedPoller;
+}
+
+/**
+ * Called when a run is dispatched to Windmill. The poller idles itself once no
+ * run is outstanding, so this is what brings it back.
+ */
+export function wakeJobPoller(): void {
+  sharedPoller?.wake();
 }

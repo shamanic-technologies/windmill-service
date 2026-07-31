@@ -4,7 +4,7 @@ import { migrate } from "drizzle-orm/postgres-js/migrator";
 import { db } from "./db/index.js";
 import { workflowRuns } from "./db/schema.js";
 import { getWindmillClient } from "./lib/windmill-client.js";
-import { JobPoller } from "./lib/job-poller.js";
+import { JobPoller, setJobPoller } from "./lib/job-poller.js";
 import { PeriodicCleanup } from "./lib/periodic-cleanup.js";
 import { requireIdentity } from "./middleware/auth.js";
 import { checkApiRegistryHealth, validateAndUpgradeWorkflows } from "./lib/startup-validator.js";
@@ -117,7 +117,10 @@ async function boot(): Promise<void> {
       process.exit(1);
     }
 
+    // One poll at boot reconciles anything left running across a restart; the
+    // poller then idles itself until a run is dispatched.
     const poller = new JobPoller(db, windmillClient, workflowRuns);
+    setJobPoller(poller);
     poller.start();
 
     // Periodic cleanup: re-runs stale-deprecation + Windmill orphan-flow
