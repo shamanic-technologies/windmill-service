@@ -33,8 +33,37 @@ import { extractDownstreamHeaders } from "../lib/downstream-headers.js";
 import { computeWorkflowScores, aggregateSectionStats, handleExternalServiceError } from "../lib/workflow-scoring.js";
 import { traceEvent } from "../lib/trace-event.js";
 import { classifyWorkflowError } from "../lib/classify-workflow-error.js";
+import { invalidateSpecWatcherCache } from "../lib/spec-watcher.js";
+import { noteWorkflowWrite } from "../lib/periodic-cleanup.js";
 
 const router = Router();
+
+/**
+ * Two background jobs deliberately have no timer of their own, so they have to
+ * learn about writes from the traffic that causes them:
+ *
+ *  - `SpecWatcher` caches which services the active workflows call, so that a
+ *    tick with no spec drift issues no query and the Neon compute can suspend.
+ *    Any write here can change that set, so the cache is dropped.
+ *  - `PeriodicCleanup` sweeps on the back of write traffic instead of waking the
+ *    compute on a 24h timer. It rate-limits itself to once a day internally.
+ *
+ * Hooked once for the whole router rather than at each write site: a new write
+ * site added later is covered without anyone remembering to call these.
+ */
+router.use((req, res, next) => {
+  if (req.method === "GET" || req.method === "HEAD") {
+    next();
+    return;
+  }
+  res.on("finish", () => {
+    if (res.statusCode >= 200 && res.statusCode < 300) {
+      invalidateSpecWatcherCache();
+      noteWorkflowWrite();
+    }
+  });
+  next();
+});
 
 function formatWorkflow(w: typeof workflows.$inferSelect) {
   return {

@@ -14,7 +14,11 @@ vi.mock("../../src/lib/startup-validator.js", () => ({
   validateAndUpgradeWorkflows: (...args: unknown[]) => mockValidateAndUpgradeWorkflows(...args),
 }));
 
-import { SpecWatcher } from "../../src/lib/spec-watcher.js";
+import {
+  SpecWatcher,
+  setSpecWatcher,
+  invalidateSpecWatcherCache,
+} from "../../src/lib/spec-watcher.js";
 
 // Minimal DAG with an http.call node
 function makeDag(service: string, method: string, path: string) {
@@ -274,5 +278,103 @@ describe("SpecWatcher", () => {
     vi.useRealTimers();
 
     // No error, no hanging timers
+  });
+
+  /**
+   * Scale-to-zero regression guard. The compute suspends after 300s of no
+   * activity, so an hourly tick that opens with a `SELECT` resets that timer 24
+   * times a day and the whole billing period is charged as active. The service
+   * set is cached in memory precisely so a no-drift tick issues no query.
+   */
+  describe("does not touch the database on a quiet tick", () => {
+    const dag = makeDag("lead-service", "get", "/leads");
+    const spec = makeSpec({ "/leads": { get: {} } });
+
+    function watcherWithOneWorkflow() {
+      const fakeDb = makeFakeDb([{ workflowSlug: "wf-1", dag }]);
+      mockFetchSpecsForServices.mockResolvedValue(new Map([["lead-service", spec]]));
+      return {
+        fakeDb,
+        watcher: new SpecWatcher({ db: fakeDb as never, windmillClient: null }),
+      };
+    }
+
+    it("reads the workflows once to prime the cache, then never again while specs are stable", async () => {
+      const { fakeDb, watcher } = watcherWithOneWorkflow();
+
+      await watcher.check(); // boot: primes cache + baseline hash
+      expect(fakeDb.select).toHaveBeenCalledTimes(1);
+
+      // Every subsequent tick with unchanged specs must be HTTP-only.
+      await watcher.check();
+      await watcher.check();
+      await watcher.check();
+
+      expect(fakeDb.select).toHaveBeenCalledTimes(1);
+      // ...while still genuinely re-checking the specs each time.
+      expect(mockFetchSpecsForServices).toHaveBeenCalledTimes(4);
+    });
+
+    it("reads the workflows again when the specs actually drift", async () => {
+      const { fakeDb, watcher } = watcherWithOneWorkflow();
+
+      await watcher.check();
+      expect(fakeDb.select).toHaveBeenCalledTimes(1);
+
+      // Same services, different spec content → hash moves → DAGs are needed.
+      mockFetchSpecsForServices.mockResolvedValue(
+        new Map([["lead-service", makeSpec({ "/leads": { get: {}, post: {} } })]]),
+      );
+      await watcher.check();
+
+      expect(fakeDb.select).toHaveBeenCalledTimes(2);
+    });
+
+    it("re-reads the workflows after a write invalidates the cache", async () => {
+      const { fakeDb, watcher } = watcherWithOneWorkflow();
+
+      await watcher.check();
+      await watcher.check();
+      expect(fakeDb.select).toHaveBeenCalledTimes(1);
+
+      // A workflow write can reference a service nobody called before.
+      watcher.invalidateWorkflowCache();
+      await watcher.check();
+
+      expect(fakeDb.select).toHaveBeenCalledTimes(2);
+    });
+
+    it("does not query on a tick when no workflow is active", async () => {
+      const fakeDb = makeFakeDb([]);
+      const watcher = new SpecWatcher({ db: fakeDb as never, windmillClient: null });
+
+      await watcher.check();
+      await watcher.check();
+      await watcher.check();
+
+      // One read to learn there is nothing, and no spec fetch at all.
+      expect(fakeDb.select).toHaveBeenCalledTimes(1);
+      expect(mockFetchSpecsForServices).not.toHaveBeenCalled();
+    });
+
+    it("invalidateSpecWatcherCache is a safe no-op when no watcher is registered", () => {
+      setSpecWatcher(null);
+      expect(() => invalidateSpecWatcherCache()).not.toThrow();
+    });
+
+    it("invalidateSpecWatcherCache drives the registered watcher", async () => {
+      const { fakeDb, watcher } = watcherWithOneWorkflow();
+      setSpecWatcher(watcher);
+
+      await watcher.check();
+      await watcher.check();
+      expect(fakeDb.select).toHaveBeenCalledTimes(1);
+
+      invalidateSpecWatcherCache();
+      await watcher.check();
+      expect(fakeDb.select).toHaveBeenCalledTimes(2);
+
+      setSpecWatcher(null);
+    });
   });
 });

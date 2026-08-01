@@ -3,6 +3,7 @@ import { workflowRuns, type Workflow, type WorkflowRun } from "../db/schema.js";
 import type { db as DbInstance } from "../db/index.js";
 import type { CampaignAttributionContext } from "./attribution-context.js";
 import { wakeJobPoller } from "./job-poller.js";
+import { noteWorkflowWrite } from "./periodic-cleanup.js";
 
 type Database = typeof DbInstance;
 
@@ -145,6 +146,10 @@ export async function markExecutionDispatched(
   // nothing is queued or running (so an idle Neon compute can actually suspend),
   // so it has to be woken here or the run is never reconciled.
   wakeJobPoller();
+
+  // The cleanup sweep rides write traffic rather than a timer, for the same
+  // reason. Fire-and-forget, rate-limited to once a day inside `maybeRun()`.
+  noteWorkflowWrite();
 
   return updated;
 }
