@@ -5,7 +5,7 @@ import { db } from "./db/index.js";
 import { workflowRuns } from "./db/schema.js";
 import { getWindmillClient } from "./lib/windmill-client.js";
 import { JobPoller, setJobPoller } from "./lib/job-poller.js";
-import { PeriodicCleanup } from "./lib/periodic-cleanup.js";
+import { PeriodicCleanup, setPeriodicCleanup } from "./lib/periodic-cleanup.js";
 import { requireIdentity } from "./middleware/auth.js";
 import { checkApiRegistryHealth, validateAndUpgradeWorkflows } from "./lib/startup-validator.js";
 import { assertEnvironmentConsistency } from "./lib/env-safety.js";
@@ -17,7 +17,7 @@ import {
   requireSchemaReady,
 } from "./lib/schema-readiness.js";
 import { deployNodes } from "./lib/deploy-nodes.js";
-import { SpecWatcher } from "./lib/spec-watcher.js";
+import { SpecWatcher, setSpecWatcher } from "./lib/spec-watcher.js";
 import healthRoutes from "./routes/health.js";
 import workflowsRoutes from "./routes/workflows.js";
 import workflowRunsRoutes from "./routes/workflow-runs.js";
@@ -123,12 +123,14 @@ async function boot(): Promise<void> {
     setJobPoller(poller);
     poller.start();
 
-    // Periodic cleanup: re-runs stale-deprecation + Windmill orphan-flow
-    // cleanup every 24h. Boot already runs them once in validateAndUpgradeWorkflows;
-    // this keeps the system tidy without requiring service restarts.
+    // Cleanup: re-runs stale-deprecation + Windmill orphan-flow cleanup at most
+    // once a day, triggered by write traffic rather than a timer. Boot already
+    // runs them once in validateAndUpgradeWorkflows. A timer here would wake the
+    // Neon compute daily to sweep a service that, if it is quiet, has nothing to
+    // collect — so the sweep rides the writes that create the work instead.
     const ONE_DAY_MS = 24 * 60 * 60 * 1000;
     periodicCleanup = new PeriodicCleanup(db, windmillClient, ONE_DAY_MS);
-    periodicCleanup.start();
+    setPeriodicCleanup(periodicCleanup);
   } else {
     console.log("Windmill not configured (WINDMILL_SERVER_URL / WINDMILL_SERVER_API_KEY missing) — job poller disabled");
   }
@@ -143,10 +145,12 @@ async function boot(): Promise<void> {
       // Don't crash — workflows with issues are kept active and logged above
     }
 
-    // Start SpecWatcher — checks every 5 min if OpenAPI specs changed,
-    // triggers workflow upgrades only when a spec change breaks a workflow.
-    // The check itself is free (HTTP + hash comparison), LLM only on upgrade.
+    // Start SpecWatcher — checks hourly whether the OpenAPI specs our active
+    // workflows depend on have drifted. This boot check primes both the baseline
+    // hash and the cached service set, so subsequent ticks are HTTP-only and the
+    // Neon compute can still reach its idle timeout.
     const specWatcher = new SpecWatcher({ db, windmillClient });
+    setSpecWatcher(specWatcher);
     await specWatcher.check(); // Store baseline hash (no-op on first call)
     specWatcher.start();
   }
@@ -161,7 +165,8 @@ if (process.env.NODE_ENV !== "test") {
 
   const shutdown = (signal: string) => {
     console.log(`[workflow-service] ${signal} received — shutting down`);
-    periodicCleanup?.stop();
+    // PeriodicCleanup owns no timer to clear — it sweeps on write traffic.
+    setPeriodicCleanup(null);
     process.exit(0);
   };
   process.on("SIGTERM", () => shutdown("SIGTERM"));

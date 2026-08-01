@@ -15,27 +15,45 @@ interface SpecWatcherDeps {
   windmillClient: WindmillClient | null;
 }
 
-// 1 hour. NOT tunable down without re-checking the Neon bill: every tick opens
-// with a `SELECT` over active workflows, so a period shorter than the compute's
-// idle timeout (300s) holds the compute open permanently and scale-to-zero
-// never engages. Spec drift does not need minute-level granularity — boot
-// already validates, and upgrades can be triggered on demand.
+// 1 hour. NOT tunable down without re-checking the Neon bill: a tick that
+// reaches Postgres on a period shorter than the compute's idle timeout (300s)
+// holds the compute open permanently and scale-to-zero never engages. Spec
+// drift does not need minute-level granularity — boot already validates, and
+// upgrades can be triggered on demand.
 const INTERVAL_MS = 60 * 60 * 1000;
 
 /**
  * Watches for OpenAPI spec changes once an hour.
- * The check itself is free (HTTP + CPU hash comparison).
- * Only triggers LLM-powered upgrades when specs actually changed
- * AND the change breaks an active workflow.
+ *
+ * A tick that finds no drift **never touches the database**: the set of service
+ * names referenced by active workflows is cached in memory, so the steady-state
+ * check is HTTP + a CPU hash comparison and the Neon compute can still reach its
+ * idle timeout. Postgres is read only when the cache is cold or when the specs
+ * genuinely changed and the DAGs are needed to validate them.
+ *
+ * The cache is dropped by `invalidateSpecWatcherCache()` on every workflow
+ * write, so a newly referenced service is picked up on the next tick. Missing
+ * an invalidation delays a warning log; it cannot corrupt anything.
  */
 export class SpecWatcher {
   private timer: ReturnType<typeof setInterval> | null = null;
   private lastSpecsHash: string | null = null;
   private running = false;
   private deps: SpecWatcherDeps;
+  /**
+   * Service names referenced by active workflows. `null` = cold, must be read
+   * from the database. Kept in memory precisely so the common (no-drift) tick
+   * issues no query at all.
+   */
+  private cachedServiceNames: string[] | null = null;
 
   constructor(deps: SpecWatcherDeps) {
     this.deps = deps;
+  }
+
+  /** Drop the cached service set — the next check re-reads it from the DB. */
+  invalidateWorkflowCache(): void {
+    this.cachedServiceNames = null;
   }
 
   start(): void {
@@ -75,6 +93,16 @@ export class SpecWatcher {
     }
   }
 
+  /** Read the service set from the database. Only called on a cold cache. */
+  private async loadServiceNames(): Promise<string[]> {
+    const activeWorkflows = await this.deps.db
+      .select()
+      .from(workflows)
+      .where(eq(workflows.status, "active"));
+
+    return collectServiceNames(activeWorkflows);
+  }
+
   private async doCheck(): Promise<void> {
     // 0. Verify API Registry is reachable before anything.
     // If it's down, spec fetches will fail and we'd wrongly flag valid endpoints as broken.
@@ -88,28 +116,19 @@ export class SpecWatcher {
       return;
     }
 
-    // 1. Fetch all active workflows
-    const activeWorkflows = await this.deps.db
-      .select()
-      .from(workflows)
-      .where(eq(workflows.status, "active"));
-
-    if (activeWorkflows.length === 0) return;
-
-    // 2. Collect all service names referenced by active workflows
-    const serviceNames = new Set<string>();
-    for (const wf of activeWorkflows) {
-      for (const ep of extractHttpEndpoints(wf.dag as DAG)) {
-        serviceNames.add(ep.service);
-      }
+    // 1. Which services do active workflows call? Served from memory whenever
+    //    possible — reading this on every tick is what used to pin the compute.
+    if (this.cachedServiceNames === null) {
+      this.cachedServiceNames = await this.loadServiceNames();
     }
+    const serviceNames = this.cachedServiceNames;
 
-    if (serviceNames.size === 0) return;
+    if (serviceNames.length === 0) return;
 
-    // 3. Fetch current specs from API Registry
-    const specs = await fetchSpecsForServices([...serviceNames]);
+    // 2. Fetch current specs from API Registry
+    const specs = await fetchSpecsForServices(serviceNames);
 
-    // 4. Hash the specs — deterministic JSON serialization by sorting keys
+    // 3. Hash the specs — deterministic JSON serialization by sorting keys
     const specsHash = hashSpecs(specs);
 
     // First run: store baseline, no upgrade needed (startup already validated)
@@ -119,11 +138,22 @@ export class SpecWatcher {
       return;
     }
 
-    // No change — nothing to do
+    // No change — nothing to do, and notably no query was issued to get here.
     if (specsHash === this.lastSpecsHash) return;
 
     console.log("[workflow-service] SpecWatcher: spec change detected — validating workflows");
     this.lastSpecsHash = specsHash;
+
+    // 4. The specs really moved, so the DAGs are needed. This is the only path
+    //    that reads the database, and it re-primes the cache while it is there.
+    const activeWorkflows = await this.deps.db
+      .select()
+      .from(workflows)
+      .where(eq(workflows.status, "active"));
+
+    this.cachedServiceNames = collectServiceNames(activeWorkflows);
+
+    if (activeWorkflows.length === 0) return;
 
     // 5. Quick validation pass (free, rule-based)
     let hasIssues = false;
@@ -149,6 +179,36 @@ export class SpecWatcher {
       "[workflow-service] SpecWatcher: spec change broke workflow(s) — LLM upgrade disabled, skipping",
     );
   }
+}
+
+/**
+ * The single watcher owned by `boot()`. Null when the API Registry is not
+ * configured — no watcher runs in that case, so there is no cache to drop.
+ */
+let sharedWatcher: SpecWatcher | null = null;
+
+export function setSpecWatcher(watcher: SpecWatcher | null): void {
+  sharedWatcher = watcher;
+}
+
+/**
+ * Called when a workflow is written. The watcher caches the set of services its
+ * active workflows call so a quiet tick issues no query; a write can change that
+ * set, so it is dropped here and re-read on the next tick.
+ */
+export function invalidateSpecWatcherCache(): void {
+  sharedWatcher?.invalidateWorkflowCache();
+}
+
+/** Service names referenced by the given workflows' DAGs. */
+function collectServiceNames(activeWorkflows: { dag: unknown }[]): string[] {
+  const serviceNames = new Set<string>();
+  for (const wf of activeWorkflows) {
+    for (const ep of extractHttpEndpoints(wf.dag as DAG)) {
+      serviceNames.add(ep.service);
+    }
+  }
+  return [...serviceNames];
 }
 
 /**
