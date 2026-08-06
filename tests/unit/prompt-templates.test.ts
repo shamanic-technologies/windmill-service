@@ -35,6 +35,15 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("body.recipientCompany");
   });
 
+  it("maps the recipient's timezone onto the email-gateway send body", () => {
+    // Without it, instantly-service schedules every prospect on its own default
+    // timezone — US business hours for the whole fleet.
+    expect(prompt).toContain('"body.timezone"');
+    expect(prompt).toMatch(/"body\.timezone":\s*"\$ref:fetch-lead\.output\.<[^>]*timezone[^>]*>"/);
+    // No default may be introduced here — instantly-service owns its own.
+    expect(prompt).not.toMatch(/"body\.timezone":\s*"[A-Za-z]+\/[A-Za-z_]+"/);
+  });
+
   it("documents the content-generation + email send pattern", () => {
     expect(prompt).toContain("Content Generation + Email Send Pattern");
     expect(prompt).toContain('body.type` MUST be "cold-email"');
