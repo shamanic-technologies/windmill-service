@@ -171,6 +171,7 @@ When using content-generation service (\`POST /generate\`):
 When sending via email-gateway (\`POST /send\` with \`type: "broadcast"\`):
 - Pass the ENTIRE \`sequence\` array from content-generation output: \`"body.sequence": "$ref:email-generate.output.<path to generated email sequence array>"\`
 - Required fields: \`to\`, \`subject\`, \`sequence\`, \`recipientFirstName\`, \`recipientLastName\`, \`recipientCompany\`
+- Also map \`body.timezone\` to the recipient's IANA timezone from the same node the recipient's email comes from: \`"body.timezone": "$ref:fetch-lead.output.<path to the recipient's timezone>"\`. It schedules the sequence in the prospect's local business hours. Omit it only when the fetch node's response declares no timezone field — never invent a path for it, and never substitute a default.
 - The sequence is variable-length (LLM determines how many follow-up steps) — always pass it as-is
 
 ## Campaign Execution Model
@@ -282,7 +283,8 @@ Campaign service orchestrates workflow execution with budget constraints. Key co
         "body.workflowSlug": "$ref:start-run.output.<path to workflowSlug in start-run response>",
         "body.recipientFirstName": "$ref:fetch-lead.output.<path to lead's first name>",
         "body.recipientLastName": "$ref:fetch-lead.output.<path to lead's last name>",
-        "body.recipientCompany": "$ref:fetch-lead.output.<path to lead's company name>"
+        "body.recipientCompany": "$ref:fetch-lead.output.<path to lead's company name>",
+        "body.timezone": "$ref:fetch-lead.output.<path to lead's IANA timezone>"
       },
       "retries": 0
     },
