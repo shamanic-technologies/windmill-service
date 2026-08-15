@@ -1099,3 +1099,223 @@ describe("field validation — object/array template variables are allowed", () 
     expect(nestedErrors).toHaveLength(0);
   });
 });
+
+describe("field validation — literal body values against a closed set", () => {
+  // Mirrors content-generation POST /generate as deployed: `model` is a
+  // version-free alias with a fixed set of permitted values.
+  const CONTENT_GEN_SPEC: Record<string, unknown> = {
+    paths: {
+      "/generate": {
+        post: {
+          summary: "Generate content",
+          requestBody: {
+            content: {
+              "application/json": {
+                schema: {
+                  type: "object",
+                  properties: {
+                    type: { type: "string" },
+                    variables: { type: "object", additionalProperties: { nullable: true } },
+                    model: {
+                      type: "string",
+                      enum: ["haiku", "sonnet", "opus", "flash-lite", "flash", "flash-pro", "pro"],
+                    },
+                    campaignId: { type: "string" },
+                  },
+                  required: ["type", "variables"],
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  };
+
+  const specs = () => new Map<string, Record<string, unknown>>([["content-generation", CONTENT_GEN_SPEC]]);
+
+  const generateNode = (
+    config: Record<string, unknown>,
+    inputMapping?: Record<string, string>,
+  ): DAG => ({
+    nodes: [
+      {
+        id: "email-generate",
+        type: "http.call",
+        config: {
+          service: "content-generation",
+          method: "POST",
+          path: "/generate",
+          ...config,
+        },
+        ...(inputMapping ? { inputMapping } : {}),
+      },
+    ],
+    edges: [],
+  });
+
+  it("rejects the 2026-08-15 incident: an invented model identifier in a static body", () => {
+    const dag = generateNode({
+      body: { type: "cold-email", variables: {}, model: "gemini-2.5-flash-preview" },
+    });
+
+    const result = validateWorkflowEndpoints(dag, specs());
+
+    expect(result.valid).toBe(false);
+    const issue = result.fieldIssues.find((i) => i.field === "model");
+    expect(issue).toBeDefined();
+    expect(issue!.severity).toBe("error");
+    expect(issue!.nodeId).toBe("email-generate");
+    expect(issue!.reason).toContain('"gemini-2.5-flash-preview"');
+    expect(issue!.reason).toContain("flash-pro");
+  });
+
+  it("rejects an invalid value stated via a dot-notation inputMapping literal", () => {
+    const dag = generateNode({ body: { type: "cold-email", variables: {} } }, {
+      "body.model": "claude-sonnet-4",
+    });
+
+    const result = validateWorkflowEndpoints(dag, specs());
+
+    expect(result.valid).toBe(false);
+    expect(
+      result.fieldIssues.some((i) => i.field === "model" && i.severity === "error"),
+    ).toBe(true);
+  });
+
+  it("accepts a permitted value", () => {
+    const dag = generateNode({ body: { type: "cold-email", variables: {}, model: "flash-pro" } });
+
+    const result = validateWorkflowEndpoints(dag, specs());
+
+    expect(result.valid).toBe(true);
+    expect(result.fieldIssues).toHaveLength(0);
+  });
+
+  it("leaves a value supplied by an upstream reference unjudged", () => {
+    const dag: DAG = {
+      nodes: [
+        {
+          id: "pick-model",
+          type: "http.call",
+          config: { service: "content-generation", method: "POST", path: "/generate" },
+        },
+        {
+          id: "email-generate",
+          type: "http.call",
+          config: {
+            service: "content-generation",
+            method: "POST",
+            path: "/generate",
+            body: { type: "cold-email", variables: {}, model: "gemini-2.5-flash-preview" },
+          },
+          inputMapping: { "body.model": "$ref:pick-model.output.model" },
+        },
+      ],
+      edges: [{ from: "pick-model", to: "email-generate" }],
+    };
+
+    const result = validateWorkflowEndpoints(dag, specs());
+
+    expect(result.fieldIssues.filter((i) => i.field === "model")).toHaveLength(0);
+  });
+
+  it("leaves everything unjudged when the whole body comes from a reference", () => {
+    const dag: DAG = {
+      nodes: [
+        {
+          id: "email-generate",
+          type: "http.call",
+          config: {
+            service: "content-generation",
+            method: "POST",
+            path: "/generate",
+            body: { model: "gemini-2.5-flash-preview" },
+          },
+          inputMapping: { body: "$ref:upstream.output.body" },
+        },
+      ],
+      edges: [],
+    };
+
+    const result = validateWorkflowEndpoints(dag, specs());
+
+    expect(result.fieldIssues.filter((i) => i.field === "model")).toHaveLength(0);
+  });
+
+  it("says nothing about a field the schema does not constrain", () => {
+    const dag = generateNode({
+      body: { type: "anything-goes", variables: { tone: "whimsical" }, campaignId: "abc" },
+    });
+
+    const result = validateWorkflowEndpoints(dag, specs());
+
+    expect(result.valid).toBe(true);
+    expect(result.fieldIssues).toHaveLength(0);
+  });
+
+  it("checks a nested literal and each element of an array-of-enum", () => {
+    const SPEC: Record<string, unknown> = {
+      paths: {
+        "/send": {
+          post: {
+            requestBody: {
+              content: {
+                "application/json": {
+                  schema: {
+                    type: "object",
+                    properties: {
+                      options: {
+                        type: "object",
+                        properties: { tone: { type: "string", enum: ["formal", "casual"] } },
+                      },
+                      channels: {
+                        type: "array",
+                        items: { type: "string", enum: ["email", "linkedin"] },
+                      },
+                      mode: { const: "batch" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    };
+
+    const dag: DAG = {
+      nodes: [
+        {
+          id: "send",
+          type: "http.call",
+          config: {
+            service: "email-gateway",
+            method: "POST",
+            path: "/send",
+            body: {
+              options: { tone: "sarcastic" },
+              channels: ["email", "carrier-pigeon"],
+              mode: "stream",
+            },
+          },
+        },
+      ],
+      edges: [],
+    };
+
+    const result = validateWorkflowEndpoints(
+      dag,
+      new Map<string, Record<string, unknown>>([["email-gateway", SPEC]]),
+    );
+
+    expect(result.valid).toBe(false);
+    const fields = result.fieldIssues.filter((i) => i.severity === "error").map((i) => i.field);
+    expect(fields).toContain("options.tone");
+    expect(fields).toContain("channels");
+    expect(fields).toContain("mode");
+    expect(
+      result.fieldIssues.find((i) => i.field === "channels")!.reason,
+    ).toContain('"carrier-pigeon"');
+  });
+});
