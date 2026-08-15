@@ -214,6 +214,43 @@ export function walkSchemaPath(
 }
 
 /**
+ * Resolves the RAW schema sitting at a nested path inside a resolved schema,
+ * following $refs on the way down. Returns null when the path does not resolve
+ * to a declared schema — including dynamic-key maps whose value shape is open
+ * (`additionalProperties: true`), because those constrain nothing.
+ *
+ * Used by value-level validation: a leaf schema is the only place a closed set
+ * of permitted values (`enum` / `const`) can be declared.
+ */
+export function getSchemaAtPath(
+  schema: ResolvedSchema,
+  path: string[],
+  spec: Record<string, unknown>,
+): Record<string, unknown> | null {
+  let current: ResolvedSchema | null = schema;
+
+  for (let i = 0; i < path.length; i++) {
+    if (!current) return null;
+
+    let prop = current.properties[path[i]];
+    if (prop === undefined) {
+      // Dynamic-key map: the value schema applies to every caller-chosen key.
+      const additional = current.additionalProperties;
+      if (additional === undefined || additional === true) return null;
+      prop = additional;
+    }
+
+    if (typeof prop !== "object" || prop === null) return null;
+
+    const raw = resolveRawSchema(prop as Record<string, unknown>, spec);
+    if (i === path.length - 1) return raw;
+    current = resolveSchema(raw, spec);
+  }
+
+  return null;
+}
+
+/**
  * Formats the keys available at a path-failure point. For object-typed values,
  * inlines up to 5 sub-keys as `key{sub1,sub2,...}` so callers see one level
  * deeper without a second round-trip. Scalars stay bare.

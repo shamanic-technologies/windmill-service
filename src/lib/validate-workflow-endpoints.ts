@@ -1,6 +1,11 @@
 import type { DAG, DAGNode } from "./dag-validator.js";
 import { extractHttpEndpoints } from "./extract-http-endpoints.js";
-import { getRequestBodySchema, getResponseSchema, walkSchemaPath } from "./openapi-schema-resolver.js";
+import {
+  getRequestBodySchema,
+  getResponseSchema,
+  getSchemaAtPath,
+  walkSchemaPath,
+} from "./openapi-schema-resolver.js";
 
 export interface InvalidEndpoint {
   service: string;
@@ -118,6 +123,101 @@ export function extractBodyFields(node: DAGNode): string[] {
   return [...fields];
 }
 
+export interface LiteralBodyValue {
+  /** Path segments under the request body, e.g. ["model"] or ["options", "tone"] */
+  path: string[];
+  value: unknown;
+}
+
+/**
+ * Collects the request-body values a node states LITERALLY in its DAG.
+ *
+ * Only literals can be judged against a downstream schema: anything that
+ * resolves at run time from an upstream node ($ref) is unknowable here and is
+ * deliberately left out — including every path a $ref overrides, since the
+ * static base is replaced by the reference at dispatch (see collapseDotNotation
+ * in input-mapping.ts).
+ */
+export function extractLiteralBodyValues(node: DAGNode): LiteralBodyValue[] {
+  // Whole-body mapping: the entire body comes from a reference, nothing literal.
+  if (typeof node.inputMapping?.body === "string") return [];
+
+  // Paths supplied at run time — these, and anything nested under them, are unjudged.
+  const dynamicPaths: string[][] = [];
+  for (const [key, ref] of Object.entries(node.inputMapping ?? {})) {
+    if (!key.startsWith("body.")) continue;
+    if (typeof ref === "string" && ref.startsWith("$ref:")) {
+      dynamicPaths.push(key.slice(5).split("."));
+    }
+  }
+
+  const isDynamic = (path: string[]): boolean =>
+    dynamicPaths.some((dyn) => dyn.every((seg, i) => path[i] === seg));
+
+  const literals: LiteralBodyValue[] = [];
+
+  const walk = (value: unknown, path: string[]): void => {
+    if (path.length > 0 && isDynamic(path)) return;
+    if (isPlainObject(value)) {
+      for (const [key, sub] of Object.entries(value)) {
+        walk(sub, [...path, key]);
+      }
+      return;
+    }
+    if (path.length > 0) literals.push({ path, value });
+  };
+
+  walk(node.config?.body, []);
+
+  // Dot-notation literals: inputMapping "body.model": "pro" is static too.
+  for (const [key, ref] of Object.entries(node.inputMapping ?? {})) {
+    if (!key.startsWith("body.")) continue;
+    if (typeof ref === "string" && ref.startsWith("$ref:")) continue;
+    walk(ref, key.slice(5).split("."));
+  }
+
+  return literals;
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Checks a literal value against a leaf schema's closed set of permitted values.
+ * Returns a human-readable violation, or null when the schema permits the value
+ * — or says nothing about it, which means unconstrained.
+ */
+export function checkLiteralAgainstSchema(
+  leaf: Record<string, unknown>,
+  value: unknown,
+): { value: unknown; permitted: unknown[] } | null {
+  if ("const" in leaf) {
+    return leaf.const === value ? null : { value, permitted: [leaf.const] };
+  }
+
+  // Array-valued field whose ITEMS declare the closed set.
+  if (Array.isArray(value)) {
+    const items = leaf.items;
+    if (!isPlainObject(items)) return null;
+    for (const element of value) {
+      const violation = checkLiteralAgainstSchema(items, element);
+      if (violation) return violation;
+    }
+    return null;
+  }
+
+  const permitted = leaf.enum;
+  if (!Array.isArray(permitted) || permitted.length === 0) return null;
+
+  // Only scalars are comparable against a scalar enum; a shape mismatch is a
+  // different question and not one this check answers.
+  if (value !== null && typeof value === "object") return null;
+  if (value === null && leaf.nullable === true) return null;
+
+  return permitted.includes(value) ? null : { value, permitted };
+}
+
 /**
  * Finds all downstream $ref:nodeId.output.field references for a given source node.
  */
@@ -202,6 +302,25 @@ function validateFields(
               reason: `Required field "${required}" missing from node "${node.id}" for ${service} ${method} ${path}`,
             });
           }
+        }
+
+        // Literal body values outside the closed set the schema permits → error.
+        // A value the schema says nothing about is unconstrained, and a value
+        // that arrives from an upstream node at run time is not judged at all.
+        for (const literal of extractLiteralBodyValues(node)) {
+          const leaf = getSchemaAtPath(requestSchema, literal.path, spec);
+          if (!leaf) continue;
+
+          const violation = checkLiteralAgainstSchema(leaf, literal.value);
+          if (!violation) continue;
+
+          const field = literal.path.join(".");
+          issues.push({
+            nodeId: node.id,
+            service, method, path, field,
+            severity: "error",
+            reason: `Body field "${field}" in node "${node.id}" has value ${JSON.stringify(violation.value)}, which ${service} ${method} ${path} does not permit (allowed: ${violation.permitted.map((v) => JSON.stringify(v)).join(", ")})`,
+          });
         }
       }
     }
