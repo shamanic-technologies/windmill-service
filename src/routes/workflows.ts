@@ -30,6 +30,7 @@ import { validateWorkflowEndpoints } from "../lib/validate-workflow-endpoints.js
 import { fetchSpecsForServices } from "../lib/api-registry-client.js";
 import { fetchPromptTemplates } from "../lib/content-generation-client.js";
 import { extractDownstreamHeaders } from "../lib/downstream-headers.js";
+import { validateClientDag } from "../lib/validate-client-dag.js";
 import { computeWorkflowScores, aggregateSectionStats, handleExternalServiceError } from "../lib/workflow-scoring.js";
 import { traceEvent } from "../lib/trace-event.js";
 import { classifyWorkflowError } from "../lib/classify-workflow-error.js";
@@ -326,9 +327,9 @@ router.post("/workflows/upgrade", requireApiKey, createRateLimit, async (req, re
     let resolvedAudienceType: typeof existing.audienceType;
 
     if (body.dag) {
-      const validation = validateDAG(body.dag as DAG);
-      if (!validation.valid) {
-        res.status(400).json({ error: "Invalid DAG", details: validation.errors });
+      const rejection = await validateClientDag(body.dag as DAG, dsHeaders);
+      if (rejection) {
+        res.status(400).json(rejection);
         return;
       }
       dag = body.dag as DAG;
@@ -568,10 +569,11 @@ router.post("/workflows", requireApiKey, createRateLimit, async (req, res) => {
     const orgId = res.locals.orgId as string;
     const dag = body.dag as DAG;
 
-    // Validate the DAG
-    const validation = validateDAG(dag);
-    if (!validation.valid) {
-      res.status(400).json({ error: "Invalid DAG", details: validation.errors });
+    // Topology + live endpoint/field validation. A client-supplied DAG gets the
+    // same gate the LLM path has always had.
+    const rejection = await validateClientDag(dag, extractDownstreamHeaders(req));
+    if (rejection) {
+      res.status(400).json(rejection);
       return;
     }
 
@@ -1051,10 +1053,12 @@ router.put("/workflows/:id", requireApiKey, async (req, res) => {
     }
 
     // --- DAG provided — validate it ---
+    // Covers both branches below: the same-signature in-place update and the
+    // fork. Both store the DAG verbatim, so both need the full gate.
     const dag = body.dag as DAG;
-    const validation = validateDAG(dag);
-    if (!validation.valid) {
-      res.status(400).json({ error: "Invalid DAG", details: validation.errors });
+    const rejection = await validateClientDag(dag, extractDownstreamHeaders(req));
+    if (rejection) {
+      res.status(400).json(rejection);
       return;
     }
 

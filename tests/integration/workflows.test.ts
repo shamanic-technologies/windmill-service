@@ -90,6 +90,17 @@ const buildContentGenSpec = () => ({
                     type: "object",
                     additionalProperties: true,
                   },
+                  // Version-free alias drawn from a closed set, as deployed.
+                  model: {
+                    type: "string",
+                    enum: [
+                      "haiku", "sonnet", "opus",
+                      "flash-lite", "flash", "flash-pro", "pro",
+                      "deepseek-flash", "deepseek-pro",
+                      "glm-flash", "glm-pro",
+                      "kimi-flash", "kimi-pro",
+                    ],
+                  },
                 },
                 required: ["type"],
               },
@@ -1200,6 +1211,110 @@ describe("UUID validation on :id routes", () => {
     const res = await request.post("/workflows/ranked/validate").set(AUTH);
     expect(res.status).toBe(400);
     expect(res.body.error).toBe("Invalid workflow ID format");
+  });
+});
+
+// Every route that stores a client-supplied DAG runs the full gate, not just
+// topology. Before this, only the LLM generation path resolved the target
+// service's OpenAPI schema, which is how three workflows came to carry
+// `"model": "deepseek-flash-v4"` — an alias content-generation does not accept,
+// shape-valid, and rejected by the service on every call.
+describe("client-supplied DAGs are validated against live endpoint schemas", () => {
+  const dagWithModel = (model: string) => ({
+    nodes: [
+      {
+        id: "email-generate",
+        type: "http.call",
+        config: {
+          service: "content-generation",
+          method: "POST",
+          path: "/generate",
+          body: { type: "cold-email", variables: {}, model },
+        },
+      },
+    ],
+    edges: [],
+  });
+
+  const BAD = dagWithModel("deepseek-flash-v4");
+  const GOOD = dagWithModel("deepseek-pro");
+
+  const seedActiveRow = () => {
+    mockDbRows.length = 0;
+    mockDbRows.push({
+      id: WF_HTTP_ID,
+      orgId: "org-1",
+      workflowSlug: "sales-cold-email-outreach-eden",
+      workflowName: "Sales Cold Email Outreach Eden",
+      workflowDynastySlug: "sales-cold-email-outreach-eden",
+      workflowDynastyName: "Sales Cold Email Outreach Eden",
+      workflowDynastySignatureName: "eden",
+      featureSlug: "sales-cold-email-outreach",
+      category: "sales",
+      channel: "email",
+      audienceType: "cold-outreach",
+      version: 1,
+      status: "active",
+      signature: "sig-existing",
+      dag: VALID_LINEAR_DAG,
+      tags: [],
+      description: "existing",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+  };
+
+  beforeEach(() => {
+    mockDbRows.length = 0;
+    mockSelectResponses.length = 0;
+  });
+
+  it("POST /workflows rejects an invented model identifier", async () => {
+    const res = await request.post("/workflows").set(AUTH).send({
+      featureSlug: "sales-cold-email-outreach",
+      category: "sales",
+      channel: "email",
+      audienceType: "cold-outreach",
+      dag: BAD,
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("DAG endpoint validation failed");
+    expect(JSON.stringify(res.body.details)).toContain("deepseek-flash-v4");
+  });
+
+  it("POST /workflows accepts the same DAG once the model is a real alias", async () => {
+    const res = await request.post("/workflows").set(AUTH).send({
+      featureSlug: "sales-cold-email-outreach",
+      category: "sales",
+      channel: "email",
+      audienceType: "cold-outreach",
+      dag: GOOD,
+    });
+
+    expect(res.status).toBe(201);
+  });
+
+  it("PUT /workflows/:id rejects an invented model identifier on the fork path", async () => {
+    seedActiveRow();
+    mockSelectResponses.push([mockDbRows[0]]);
+
+    const res = await request.put(`/workflows/${WF_HTTP_ID}`).set(AUTH).send({ dag: BAD });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("DAG endpoint validation failed");
+  });
+
+  it("POST /workflows/upgrade rejects an invented model identifier in a client-supplied dag", async () => {
+    seedActiveRow();
+
+    const res = await request.post("/workflows/upgrade").set(AUTH).send({
+      workflowDynastySlug: "sales-cold-email-outreach-eden",
+      dag: BAD,
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("DAG endpoint validation failed");
   });
 });
 
