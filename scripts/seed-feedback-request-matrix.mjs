@@ -35,6 +35,13 @@
  *   node seed-feedback-request-matrix.mjs --dry-run
  *   node seed-feedback-request-matrix.mjs --apply
  *
+ * `POST /workflows` is rate limited to 10 creations per minute per org, so a
+ * twelve-cell run ends on two 429s by design. That is what the idempotence is
+ * for: wait out the window and run `--apply` again, and it creates only the
+ * cells that are still missing. The 429s are reported as failures and exit 1
+ * rather than being retried in-process, so a run that hit the limit never looks
+ * like a run that succeeded.
+ *
  * Env: WORKFLOW_SERVICE_API_KEY (required), BASE_URL (default localhost:8080),
  *      ORG_ID (default below).
  */
