@@ -577,6 +577,40 @@ router.post("/workflows", requireApiKey, createRateLimit, async (req, res) => {
 
     // Compute signature and naming
     const signature = computeDAGSignature(body.dag);
+
+    // Conflict guard: an active workflow in the same feature_slug may already
+    // hold this signature (partial unique index idx_workflows_active_sig =
+    // (feature_slug, signature) WHERE status='active'). Inserting would violate
+    // the constraint and leak a raw Postgres 500. Detect it first and return the
+    // same clean 409 the fork path (PUT /workflows/{id}) returns, so the caller
+    // learns which workflow already covers this DAG. Scoped like the index
+    // itself — no org filter — because the constraint is cross-org.
+    // Runs BEFORE the Windmill flow is created so a conflict leaves no orphan.
+    const [conflicting] = await db
+      .select({
+        id: workflows.id,
+        workflowSlug: workflows.workflowSlug,
+        workflowName: workflows.workflowName,
+      })
+      .from(workflows)
+      .where(
+        and(
+          eq(workflows.featureSlug, body.featureSlug),
+          eq(workflows.signature, signature),
+          eq(workflows.status, "active"),
+        )
+      );
+
+    if (conflicting) {
+      res.status(409).json({
+        error: "A workflow with this DAG signature already exists",
+        existingWorkflowId: conflicting.id,
+        existingWorkflowSlug: conflicting.workflowSlug,
+        existingWorkflowName: conflicting.workflowName,
+      });
+      return;
+    }
+
     const existingFeatureRows = await db
       .select({ workflowDynastySignatureName: workflows.workflowDynastySignatureName })
       .from(workflows)
