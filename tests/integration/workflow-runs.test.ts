@@ -313,6 +313,47 @@ describe("POST /workflows/:id/execute", () => {
     );
   });
 
+  // The generated DAGs reference `flow_input.currentDate` and nothing ever put
+  // it there, so every LLM generation rendered "Today is ." and the model was
+  // told nothing about the date. A missing flow_input is silent: the reference
+  // resolves to an empty string, no error is raised anywhere.
+  it("supplies currentDate to Windmill, which the prompt templates depend on", async () => {
+    mockWorkflows.push({
+      id: WF_ID,
+      orgId: "org-1",
+      workflowSlug: "test-flow",
+      windmillFlowPath: "f/workflows/org_1/test_flow",
+      windmillWorkspace: "prod",
+      dag: VALID_LINEAR_DAG,
+    });
+
+    await request.post(`/workflows/${WF_ID}/execute`).set(AUTH).send({ inputs: {} });
+
+    const flowInputs = mockRunFlow.mock.calls[0][1];
+    expect(flowInputs.currentDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(flowInputs.currentDate).toBe(new Date().toISOString().split("T")[0]);
+  });
+
+  // Platform identity overrides the caller; currentDate deliberately does not,
+  // so a replay or a test can pin the date it generates against.
+  it("lets an explicit caller input override currentDate", async () => {
+    mockWorkflows.push({
+      id: WF_ID,
+      orgId: "org-1",
+      workflowSlug: "test-flow",
+      windmillFlowPath: "f/workflows/org_1/test_flow",
+      windmillWorkspace: "prod",
+      dag: VALID_LINEAR_DAG,
+    });
+
+    await request
+      .post(`/workflows/${WF_ID}/execute`)
+      .set(AUTH)
+      .send({ inputs: { currentDate: "2020-01-01" } });
+
+    expect(mockRunFlow.mock.calls[0][1].currentDate).toBe("2020-01-01");
+  });
+
   it("preserves tagged campaign attribution through run creation and Windmill inputs", async () => {
     mockWorkflows.push({
       id: WF_ID,
