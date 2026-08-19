@@ -35,6 +35,13 @@
  *   node seed-feedback-request-matrix.mjs --dry-run
  *   node seed-feedback-request-matrix.mjs --apply
  *
+ * `POST /workflows` is rate limited to 10 creations per minute per org, so a
+ * twelve-cell run ends on two 429s by design. That is what the idempotence is
+ * for: wait out the window and run `--apply` again, and it creates only the
+ * cells that are still missing. The 429s are reported as failures and exit 1
+ * rather than being retried in-process, so a run that hit the limit never looks
+ * like a run that succeeded.
+ *
  * Env: WORKFLOW_SERVICE_API_KEY (required), BASE_URL (default localhost:8080),
  *      ORG_ID (default below).
  */
@@ -80,20 +87,28 @@ export const MODELS = ["pro", "deepseek-pro", "glm-pro", "kimi-pro"];
 
 /**
  * The eight the customer fills in on the feature, plus the general brand
- * context the emails lean on. The first eight MUST stay byte-equal to the
- * feature's extraction keys in features-service, or the customer's own words
- * never reach the email and the extractor answers from the brand's website
- * instead. Verify against `GET /features/<slug>/inputs` before applying.
+ * context the emails lean on.
+ *
+ * `key` MUST stay byte-equal to the feature's extraction key in
+ * features-service, or the customer's own words never reach the email and the
+ * extractor answers from the brand's website instead. Verified against the
+ * deployed `GET /features/<slug>/inputs` on 2026-08-19 (features v0.133.0).
+ *
+ * `variable` is what the prompt template declares. It matches `key` everywhere
+ * except the gift, which features-service named `gift` while the templates were
+ * already registered against `giftOffer`. The DAG is the mapping layer between
+ * the two, which is exactly what it is for; renaming either side after the fact
+ * would version a prompt for no behavioural gain.
  */
 export const OFFER_FIELDS = [
-  { key: "giftOffer", description: "What the prospect receives in exchange for feedback: a free trial, the service offered, at-cost access, or early access. State it as the prospect would receive it." },
-  { key: "giftValue", description: "What that gift is worth, anchored to its normal price, and what the relationship becomes once the feedback is given." },
-  { key: "feedbackForm", description: "The form of feedback asked in return: a written testimonial private or public, a video testimonial private or public, a call, or a review on a public platform such as G2, Google Maps, Trustpilot or Capterra." },
-  { key: "feedbackEffort", description: "How much time and effort the feedback costs the prospect, stated concretely. For example fifteen minutes on a call, three questions in writing, a sixty second video." },
-  { key: "socialProof", description: "Trust signals that make the offer credible: how many people already took it, named customers, published results." },
-  { key: "scarcity", description: "Limited availability, typically a number of seats in the tester programme. Empty when none genuinely applies." },
-  { key: "urgency", description: "A deadline or closing cohort. Empty when none genuinely applies." },
-  { key: "riskReversal", description: "What removes the risk of accepting: no commitment, no credit card, cancel at any time." },
+  { key: "gift", variable: "giftOffer", description: "What the prospect receives in exchange for feedback: a free trial, the service offered, at-cost access, or early access. State it as the prospect would receive it." },
+  { key: "giftValue", variable: "giftValue", description: "What that gift is worth, anchored to its normal price, and what the relationship becomes once the feedback is given." },
+  { key: "feedbackForm", variable: "feedbackForm", description: "The form of feedback asked in return: a written testimonial private or public, a video testimonial private or public, a call, or a review on a public platform such as G2, Google Maps, Trustpilot or Capterra." },
+  { key: "feedbackEffort", variable: "feedbackEffort", description: "How much time and effort the feedback costs the prospect, stated concretely. For example fifteen minutes on a call, three questions in writing, a sixty second video." },
+  { key: "socialProof", variable: "socialProof", description: "Trust signals that make the offer credible: how many people already took it, named customers, published results." },
+  { key: "scarcity", variable: "scarcity", description: "Limited availability, typically a number of seats in the tester programme. Empty when none genuinely applies." },
+  { key: "urgency", variable: "urgency", description: "A deadline or closing cohort. Empty when none genuinely applies." },
+  { key: "riskReversal", variable: "riskReversal", description: "What removes the risk of accepting: no commitment, no credit card, cancel at any time." },
 ];
 
 const BRAND_CONTEXT_FIELDS = [
@@ -152,7 +167,11 @@ export function buildDag(promptType, model) {
           service: "brand",
           method: "POST",
           path: "/orgs/brands/extract-fields",
-          body: { fields: [...OFFER_FIELDS, ...BRAND_CONTEXT_FIELDS] },
+          // `variable` is this script's own bookkeeping; brand-service takes
+          // { key, description } and nothing else.
+          body: {
+            fields: [...OFFER_FIELDS, ...BRAND_CONTEXT_FIELDS].map(({ key, description }) => ({ key, description })),
+          },
         },
       },
       { id: "get-date", type: "script", config: { code: GET_DATE_CODE } },
@@ -180,14 +199,12 @@ export function buildDag(promptType, model) {
           "body.variables.leadCompanyDescription": "$ref:fetch-lead.output.lead.data.organization.shortDescription",
           "body.variables.leadCompanyKeywords": "$ref:fetch-lead.output.lead.data.organization.keywords",
           "body.variables.leadCompanyTechStack": "$ref:fetch-lead.output.lead.data.organization.technologyNames",
-          "body.variables.giftOffer": "$ref:brand-extract-fields.output.fields.giftOffer.value",
-          "body.variables.giftValue": "$ref:brand-extract-fields.output.fields.giftValue.value",
-          "body.variables.feedbackForm": "$ref:brand-extract-fields.output.fields.feedbackForm.value",
-          "body.variables.feedbackEffort": "$ref:brand-extract-fields.output.fields.feedbackEffort.value",
-          "body.variables.socialProof": "$ref:brand-extract-fields.output.fields.socialProof.value",
-          "body.variables.scarcity": "$ref:brand-extract-fields.output.fields.scarcity.value",
-          "body.variables.urgency": "$ref:brand-extract-fields.output.fields.urgency.value",
-          "body.variables.riskReversal": "$ref:brand-extract-fields.output.fields.riskReversal.value",
+          ...Object.fromEntries(
+            OFFER_FIELDS.map(({ key, variable }) => [
+              `body.variables.${variable}`,
+              `$ref:brand-extract-fields.output.fields.${key}.value`,
+            ]),
+          ),
           "body.variables.brandExtractedFields": "$ref:brand-extract-fields.output",
         },
       },

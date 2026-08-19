@@ -59,15 +59,32 @@ describe("seed-feedback-request-matrix", () => {
   it("asks brand-service for all eight offer fields and maps each into the prompt", () => {
     const dag = buildDag("feedback-request-giving-email-v1", "pro") as DAG;
     const extract = dag.nodes.find((n) => n.id === "brand-extract-fields");
-    const requested = (extract?.config?.body as { fields: { key: string }[] }).fields.map((f) => f.key);
+    const fields = (extract?.config?.body as { fields: { key: string }[] }).fields;
     const generate = dag.nodes.find((n) => n.id === "email-generate");
 
-    for (const { key } of OFFER_FIELDS as { key: string }[]) {
-      expect(requested, key).toContain(key);
-      expect(generate?.inputMapping?.[`body.variables.${key}`]).toBe(
+    for (const { key, variable } of OFFER_FIELDS as { key: string; variable: string }[]) {
+      expect(fields.map((f) => f.key), key).toContain(key);
+      expect(generate?.inputMapping?.[`body.variables.${variable}`]).toBe(
         `$ref:brand-extract-fields.output.fields.${key}.value`,
       );
     }
+
+    // brand-service takes { key, description }; the script's own `variable`
+    // bookkeeping must not ride along in the request body.
+    for (const field of fields) {
+      expect(Object.keys(field).sort()).toEqual(["description", "key"]);
+    }
+  });
+
+  // features-service named the gift `gift` after the templates were already
+  // registered against `giftOffer`. The DAG bridges the two, so a regression
+  // here means the customer's description of their own gift stops reaching the
+  // email and the extractor answers from the brand's website instead.
+  it("bridges the gift key to the variable the templates declare", () => {
+    const dag = buildDag("feedback-request-giving-email-v1", "pro") as DAG;
+    expect(dag.nodes.find((n) => n.id === "email-generate")?.inputMapping?.["body.variables.giftOffer"]).toBe(
+      "$ref:brand-extract-fields.output.fields.gift.value",
+    );
   });
 
   it("supplies currentDate, which the templates declare and the fleet's DAGs omit", () => {
