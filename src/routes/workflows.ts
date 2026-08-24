@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { eq, and, sql } from "drizzle-orm";
+import { eq, and, or, sql } from "drizzle-orm";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 import { db } from "../db/index.js";
@@ -15,6 +15,7 @@ import {
   CreateWorkflowFromDescriptionSchema,
   UpgradeWorkflowFromDescriptionSchema,
   DynastyStatusUpdateSchema,
+  WorkflowStatusUpdateSchema,
 } from "../schemas.js";
 import {
   generateWorkflow,
@@ -35,7 +36,9 @@ import { computeWorkflowScores, aggregateSectionStats, handleExternalServiceErro
 import { traceEvent } from "../lib/trace-event.js";
 import { classifyWorkflowError } from "../lib/classify-workflow-error.js";
 import { invalidateSpecWatcherCache } from "../lib/spec-watcher.js";
+import { syncFlowToWindmill } from "../lib/startup-validator.js";
 import { noteWorkflowWrite } from "../lib/periodic-cleanup.js";
+import { resolveStatusFilter } from "../lib/status-filter.js";
 
 const router = Router();
 
@@ -72,6 +75,26 @@ function formatWorkflow(w: typeof workflows.$inferSelect) {
     createdAt: w.createdAt?.toISOString() ?? null,
     updatedAt: w.updatedAt?.toISOString() ?? null,
   };
+}
+
+/**
+ * Re-push a workflow's Windmill flow before it is made executable again.
+ *
+ * `cleanupOrphanedWindmillFlows` deletes the Windmill flow of any deprecated
+ * workflow that no active campaign references, so a version that was retired for
+ * a while very likely has no flow left. Restoring the row without restoring the
+ * flow produces a workflow that is `status='active'`, gets picked, and then 404s
+ * inside Windmill on every execute. `syncFlowToWindmill` re-creates at the
+ * recorded path when Windmill answers 404, and is a no-op when the flow is
+ * present — so this is safe to call unconditionally on the un-retire path.
+ *
+ * Throws on failure: an un-retire that cannot restore the flow must fail loudly
+ * rather than leave a live-but-broken workflow behind.
+ */
+async function restoreWindmillFlow(workflow: typeof workflows.$inferSelect): Promise<void> {
+  const client = getWindmillClient();
+  if (!client) return;
+  await syncFlowToWindmill(workflow, client);
 }
 
 /** Strip version suffix from slug: "cold-outreach-obsidian-v3" → "cold-outreach-obsidian" */
@@ -169,6 +192,7 @@ router.post("/workflows/create", requireApiKey, createRateLimit, async (req, res
           signature: existingMatch.signature,
           workflowDynastySignatureName: existingMatch.workflowDynastySignatureName,
           version: existingMatch.version,
+          workflowDynastyStatus: existingMatch.workflowDynastyStatus as "active" | "deprecated",
           action: "existing" as const,
         },
         dag: existingMatch.dag,
@@ -259,6 +283,7 @@ router.post("/workflows/create", requireApiKey, createRateLimit, async (req, res
         signature: created.signature,
         workflowDynastySignatureName: created.workflowDynastySignatureName,
         version: created.version,
+        workflowDynastyStatus: created.workflowDynastyStatus as "active" | "deprecated",
         action: "created" as const,
       },
       dag: generated.dag,
@@ -394,6 +419,7 @@ router.post("/workflows/upgrade", requireApiKey, createRateLimit, async (req, re
           signature: updated.signature,
           workflowDynastySignatureName: updated.workflowDynastySignatureName,
           version: updated.version,
+          workflowDynastyStatus: updated.workflowDynastyStatus as "active" | "deprecated",
           action: "updated" as const,
         },
         dag,
@@ -490,6 +516,11 @@ router.post("/workflows/upgrade", requireApiKey, createRateLimit, async (req, re
           version: newVersion,
           dag,
           windmillFlowPath: flowPath,
+          // A retired dynasty stays retired across an upgrade. Without this the
+          // column defaults to 'active' and upgrading a retired lineage silently
+          // un-retires it — the row would execute again while the operator who
+          // retired it is told nothing.
+          workflowDynastyStatus: existing.workflowDynastyStatus,
           creationType: "upgrade",
           createdFromWorkflow: existing.id,
           createdByUserId: userId,
@@ -537,6 +568,7 @@ router.post("/workflows/upgrade", requireApiKey, createRateLimit, async (req, re
         signature: created!.signature,
         workflowDynastySignatureName: created!.workflowDynastySignatureName,
         version: created!.version,
+        workflowDynastyStatus: created!.workflowDynastyStatus as "active" | "deprecated",
         action: "upgraded" as const,
       },
       dag,
@@ -799,39 +831,180 @@ router.get("/workflows/dynasty/stats", requireApiKey, async (req, res) => {
   }
 });
 
-// PUT /workflows/dynasty/:workflowDynastySlug/status — Set a whole dynasty's
-// status (active/deprecated). Dynasty-scoped: flips workflow_dynasty_status on
-// EVERY version in the lineage. Idempotent (re-applying the same status is a
-// no-op success). Independent of the per-version `status` and execution
-// resolution — purely the dynasty-level flag surfaced on GET /workflows.
+// PUT /workflows/dynasty/:workflowDynastySlug/status — Retire (or un-retire) a
+// whole dynasty. Idempotent (re-applying the same status is a no-op success).
+//
+// 'deprecated' MEANS RETIRED, and retirement has to be true on both axes at once:
+//
+//  - workflow_dynasty_status is flipped on EVERY version in the lineage. That is
+//    the axis the execute routes consult, so a retired dynasty answers 410 even
+//    if a later write leaves some version row marked active.
+//  - the per-version `status` of every version is flipped to 'deprecated' too.
+//    That is the axis every EXISTING consumer already reads — campaign-service
+//    provisions off `GET /workflows?status=active`, features-service picks the
+//    executable head out of `/public/workflows?status=all` by `status === 'active'`
+//    — so without this half, a retired dynasty keeps being ranked and picked and
+//    every resulting run is refused. Retirement that only the producer knows about
+//    is the bug this route had.
+//
+// Un-retiring restores exactly one version to active: the highest version number
+// in the lineage, which is the terminal row of the upgrade chain (forks branch
+// into a NEW dynasty slug, and predecessors are deprecated on upgrade). The
+// partial unique index idx_workflows_active_signame therefore cannot be violated
+// — every other row of the lineage is left deprecated.
 router.put("/workflows/dynasty/:workflowDynastySlug/status", requireApiKey, async (req, res) => {
   try {
     const { workflowDynastySlug } = req.params;
     const body = DynastyStatusUpdateSchema.parse(req.body);
 
     // Existence check: unknown dynasty slug → 404.
-    const [existing] = await db
-      .select({ id: workflows.id })
+    const lineage = await db
+      .select()
       .from(workflows)
       .where(eq(workflows.workflowDynastySlug, workflowDynastySlug));
 
-    if (!existing) {
+    if (lineage.length === 0) {
       res.status(404).json({ error: `No workflows found for workflowDynastySlug: ${workflowDynastySlug}` });
       return;
     }
 
-    await db
-      .update(workflows)
-      .set({ workflowDynastyStatus: body.status, updatedAt: new Date() })
-      .where(eq(workflows.workflowDynastySlug, workflowDynastySlug));
+    // The version to restore on un-retire: highest version = upgrade-chain head.
+    const head = lineage.reduce((a, b) => (b.version > a.version ? b : a));
 
-    res.json({ workflowDynastySlug, status: body.status });
+    if (body.status === "active" && head.status !== "active") {
+      try {
+        await restoreWindmillFlow(head);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[workflow-service] Un-retire "${workflowDynastySlug}": Windmill flow restore failed:`, msg);
+        res.status(502).json({ error: `Could not restore the Windmill flow for "${head.workflowSlug}": ${msg}` });
+        return;
+      }
+    }
+
+    await db.transaction(async (tx) => {
+      await tx
+        .update(workflows)
+        .set({
+          workflowDynastyStatus: body.status,
+          status: "deprecated",
+          updatedAt: new Date(),
+        })
+        .where(eq(workflows.workflowDynastySlug, workflowDynastySlug));
+
+      if (body.status === "active") {
+        await tx
+          .update(workflows)
+          .set({ status: "active", updatedAt: new Date() })
+          .where(eq(workflows.id, head.id));
+      }
+    });
+
+    console.log(
+      `[workflow-service] Dynasty "${workflowDynastySlug}" set to ${body.status} across ${lineage.length} version(s)` +
+      (body.status === "active" ? ` — restored "${head.workflowSlug}" as the active version` : " — no version left executable"),
+    );
+
+    res.json({
+      workflowDynastySlug,
+      status: body.status,
+      updatedWorkflows: lineage.length,
+      activeWorkflowSlug: body.status === "active" ? head.workflowSlug : null,
+    });
   } catch (err: unknown) {
     if (err instanceof Error && err.name === "ZodError") {
       res.status(400).json({ error: "Validation error", details: err });
       return;
     }
     console.error("[workflow-service] PUT dynasty status error:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
+// PUT /workflows/:id/status — Retire (or un-retire) ONE version.
+//
+// The per-version `status` column is what the upgrade path and the stale-workflow
+// sweeper already write; until now nothing let an operator write it directly, so
+// "retire this one workflow" was only reachable with a hand-written UPDATE against
+// the database. Retiring the only active version of a dynasty leaves the dynasty
+// with no executable version: execute-by-slug then answers 410 rather than falling
+// back to an older version, which is the correct refusal.
+//
+// Re-activating is refused with 409 when another version of the same dynasty is
+// already active — at most one version per dynasty may be active, and the partial
+// unique index idx_workflows_active_signame enforces the same thing one layer down.
+router.put("/workflows/:id/status", requireApiKey, async (req, res) => {
+  if (!UUID_RE.test(req.params.id)) {
+    res.status(400).json({ error: "Invalid workflow ID format" });
+    return;
+  }
+  try {
+    const body = WorkflowStatusUpdateSchema.parse(req.body);
+
+    const [workflow] = await db
+      .select()
+      .from(workflows)
+      .where(eq(workflows.id, req.params.id));
+
+    if (!workflow) {
+      res.status(404).json({ error: "Workflow not found" });
+      return;
+    }
+
+    if (workflow.status === body.status) {
+      res.json(formatWorkflow(workflow));
+      return;
+    }
+
+    if (body.status === "active") {
+      const [conflicting] = await db
+        .select({ id: workflows.id, workflowSlug: workflows.workflowSlug })
+        .from(workflows)
+        .where(
+          and(
+            eq(workflows.workflowDynastySlug, workflow.workflowDynastySlug),
+            eq(workflows.status, "active"),
+          )
+        );
+
+      if (conflicting) {
+        res.status(409).json({
+          error:
+            `Another version of dynasty "${workflow.workflowDynastySlug}" is already active ` +
+            `("${conflicting.workflowSlug}"). Retire it first.`,
+          existingWorkflowId: conflicting.id,
+          existingWorkflowSlug: conflicting.workflowSlug,
+        });
+        return;
+      }
+
+      try {
+        await restoreWindmillFlow(workflow);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error(`[workflow-service] Un-retire "${workflow.workflowSlug}": Windmill flow restore failed:`, msg);
+        res.status(502).json({ error: `Could not restore the Windmill flow for "${workflow.workflowSlug}": ${msg}` });
+        return;
+      }
+    }
+
+    const [updated] = await db
+      .update(workflows)
+      .set({ status: body.status, updatedAt: new Date() })
+      .where(eq(workflows.id, workflow.id))
+      .returning();
+
+    console.log(
+      `[workflow-service] Workflow "${workflow.workflowSlug}" (${workflow.id}) set to status=${body.status}`,
+    );
+
+    res.json(formatWorkflow(updated));
+  } catch (err: unknown) {
+    if (err instanceof Error && err.name === "ZodError") {
+      res.status(400).json({ error: "Validation error", details: err });
+      return;
+    }
+    console.error("[workflow-service] PUT workflow status error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
 });
@@ -848,9 +1021,24 @@ router.get("/workflows", requireApiKey, async (req, res) => {
 
     const conditions: ReturnType<typeof eq>[] = [];
 
-    // Default to active workflows unless ?status=all is passed
-    if (status !== "all") {
-      conditions.push(eq(workflows.status, typeof status === "string" ? status : "active"));
+    // Defaults to the runnable set. "active" means EXECUTABLE, which requires
+    // both axes: an active version of a retired dynasty is not a candidate and
+    // must not be listed as one — that is exactly what campaign-service
+    // provisions off (it reads this route with status=active and never looks at
+    // the emitted status field).
+    const statusFilter = resolveStatusFilter(typeof status === "string" ? status : undefined);
+    if (statusFilter.kind === "executable") {
+      conditions.push(eq(workflows.status, "active"));
+      conditions.push(eq(workflows.workflowDynastyStatus, "active"));
+    } else if (statusFilter.kind === "retired") {
+      conditions.push(
+        or(
+          eq(workflows.status, "deprecated"),
+          eq(workflows.workflowDynastyStatus, "deprecated"),
+        )!
+      );
+    } else if (statusFilter.kind === "versionStatus") {
+      conditions.push(eq(workflows.status, statusFilter.value));
     }
 
     if (orgId && typeof orgId === "string") {

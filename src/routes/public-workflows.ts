@@ -1,11 +1,12 @@
 import { Router } from "express";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, or, inArray } from "drizzle-orm";
 import { db } from "../db/index.js";
 import { workflows } from "../db/schema.js";
 import {
   PublicWorkflowsQuerySchema,
 } from "../schemas.js";
 import { requireApiKey } from "../middleware/auth.js";
+import { resolveStatusFilter } from "../lib/status-filter.js";
 
 const router = Router();
 
@@ -24,11 +25,23 @@ router.get("/public/workflows", requireApiKey, async (req, res) => {
       return;
     }
 
-    const statusFilter = query.data.status ?? "active";
+    const statusFilter = resolveStatusFilter(query.data.status);
 
+    // "active" here means EXECUTABLE, on both axes: a version of a retired
+    // dynasty cannot run, so it must not be served as an active candidate to
+    // the rankers reading this route. "deprecated" is the complement of that,
+    // so the two filters still partition the same set "all" returns.
     const conditions = [inArray(workflows.featureSlug, featureSlugs)];
-    if (statusFilter !== "all") {
-      conditions.push(eq(workflows.status, statusFilter));
+    if (statusFilter.kind === "executable") {
+      conditions.push(eq(workflows.status, "active"));
+      conditions.push(eq(workflows.workflowDynastyStatus, "active"));
+    } else if (statusFilter.kind === "retired") {
+      conditions.push(
+        or(
+          eq(workflows.status, "deprecated"),
+          eq(workflows.workflowDynastyStatus, "deprecated"),
+        )!
+      );
     }
 
     const rows = await db.select().from(workflows).where(and(...conditions));
@@ -54,6 +67,7 @@ router.get("/public/workflows", requireApiKey, async (req, res) => {
         workflowDynastyName: w.workflowDynastyName,
         version: w.version,
         status: w.status,
+        workflowDynastyStatus: w.workflowDynastyStatus as "active" | "deprecated",
         featureSlug: w.featureSlug,
         createdForBrandId: w.createdForBrandId ?? null,
         upgradedTo: upgradedToById.get(w.id) ?? null,

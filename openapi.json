@@ -160,7 +160,7 @@
               "active",
               "deprecated"
             ],
-            "description": "Per-version lifecycle status. Only active workflows can be executed. Within a dynasty the latest version is 'active' and predecessors are 'deprecated'. Distinct from `workflowDynastyStatus`."
+            "description": "Per-version lifecycle status. Only active workflows can be executed. Within a dynasty the latest version is 'active' and predecessors are 'deprecated'. Set on demand via PUT /workflows/{id}/status. Distinct from `workflowDynastyStatus`."
           },
           "workflowDynastyStatus": {
             "type": "string",
@@ -168,7 +168,7 @@
               "active",
               "deprecated"
             ],
-            "description": "Dynasty-level status. 'deprecated' means the entire lineage was deprecated on demand (staff action); 'active' otherwise. Constant across all versions of a dynasty. Set via PUT /workflows/dynasty/{workflowDynastySlug}/status."
+            "description": "Dynasty-level status. 'deprecated' means the entire lineage is retired: no version of it can be executed (execute returns 410) and it is not listed as an active candidate. Constant across all versions of a dynasty. Set via PUT /workflows/dynasty/{workflowDynastySlug}/status."
           },
           "creationType": {
             "type": "string",
@@ -558,11 +558,22 @@
               "deprecated"
             ],
             "description": "The dynasty's status after the write."
+          },
+          "updatedWorkflows": {
+            "type": "integer",
+            "description": "How many version rows in the lineage carry the new status."
+          },
+          "activeWorkflowSlug": {
+            "type": "string",
+            "nullable": true,
+            "description": "The workflow slug left executable. Null when the dynasty was retired — a retired dynasty has no executable version, and nothing is substituted for it."
           }
         },
         "required": [
           "workflowDynastySlug",
-          "status"
+          "status",
+          "updatedWorkflows",
+          "activeWorkflowSlug"
         ]
       },
       "DynastyStatusUpdate": {
@@ -574,7 +585,23 @@
               "active",
               "deprecated"
             ],
-            "description": "New dynasty-level status. 'deprecated' marks the entire lineage deprecated; 'active' reactivates it. Idempotent — re-applying the same status is a no-op success."
+            "description": "New dynasty-level status. 'deprecated' retires the entire lineage: no version of it can be executed any more (every execute returns 410) and it stops being listed as an active candidate. 'active' un-retires it. Idempotent — re-applying the same status is a no-op success."
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "WorkflowStatusUpdate": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "active",
+              "deprecated"
+            ],
+            "description": "New per-version lifecycle status. 'deprecated' retires THIS version only: it can no longer be executed by id, and it stops being the dynasty's execution target when resolving by slug. 'active' restores it — rejected with 409 when another version of the same dynasty is already active. Idempotent."
           }
         },
         "required": [
@@ -1480,6 +1507,14 @@
             "type": "integer",
             "description": "Version number within the lineage."
           },
+          "workflowDynastyStatus": {
+            "type": "string",
+            "enum": [
+              "active",
+              "deprecated"
+            ],
+            "description": "Dynasty-level status, inherited from the lineage. 'deprecated' means the lineage is retired, so the workflow named here cannot be executed — upgrading a retired dynasty does not un-retire it."
+          },
           "action": {
             "type": "string",
             "enum": [
@@ -1501,6 +1536,7 @@
           "signature",
           "workflowDynastySignatureName",
           "version",
+          "workflowDynastyStatus",
           "action"
         ]
       },
@@ -1640,7 +1676,15 @@
           },
           "status": {
             "type": "string",
-            "description": "Workflow status: active or deprecated."
+            "description": "Per-version lifecycle status: active or deprecated."
+          },
+          "workflowDynastyStatus": {
+            "type": "string",
+            "enum": [
+              "active",
+              "deprecated"
+            ],
+            "description": "Dynasty-level status. 'deprecated' means the whole lineage is retired and cannot execute, whatever this row's per-version `status` says. A row is executable only when both are 'active'."
           },
           "featureSlug": {
             "type": "string",
@@ -1666,6 +1710,7 @@
           "workflowDynastyName",
           "version",
           "status",
+          "workflowDynastyStatus",
           "featureSlug",
           "createdForBrandId",
           "upgradedTo"
@@ -2052,10 +2097,10 @@
           {
             "schema": {
               "type": "string",
-              "description": "Filter by status. Defaults to 'active'. Use 'all' to include deprecated workflows."
+              "description": "Filter by status. Defaults to 'active', which means EXECUTABLE: the version is active AND its dynasty is not retired — so a retired dynasty stops being offered as a candidate. Use 'all' to include deprecated workflows."
             },
             "required": false,
-            "description": "Filter by status. Defaults to 'active'. Use 'all' to include deprecated workflows.",
+            "description": "Filter by status. Defaults to 'active', which means EXECUTABLE: the version is active AND its dynasty is not retired — so a retired dynasty stops being offered as a candidate. Use 'all' to include deprecated workflows.",
             "name": "status",
             "in": "query"
           },
@@ -2391,8 +2436,8 @@
     },
     "/workflows/dynasty/{workflowDynastySlug}/status": {
       "put": {
-        "summary": "Set a workflow dynasty's status (active/deprecated)",
-        "description": "Marks an entire workflow dynasty (lineage) active or deprecated. Applies to every version in the dynasty. Idempotent — re-applying the same status is a no-op success. Does not affect the per-version lifecycle `status` or execution resolution; it only sets the dynasty-level flag surfaced as `status` on GET /workflows.",
+        "summary": "Retire or un-retire a whole workflow dynasty",
+        "description": "Marks an entire workflow dynasty (lineage) active or deprecated. Applies to every version in the dynasty. Idempotent — re-applying the same status is a no-op success. A deprecated dynasty is RETIRED: every execute against any of its versions returns 410, and it is excluded from the default (active) workflow listings, so rankers and pickers stop offering it. It does not change the per-version lifecycle `status`, so un-retiring restores the same active version.",
         "tags": [
           "Workflows"
         ],
@@ -2514,6 +2559,163 @@
           },
           "404": {
             "description": "No workflows found for this dynasty slug",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/workflows/{id}/status": {
+      "put": {
+        "summary": "Retire or un-retire a single workflow version",
+        "description": "Sets the per-version lifecycle `status` of one workflow. 'deprecated' retires that version: executing it by id returns 410, and it stops being the version a dynasty-slug execute resolves forward to — so retiring the only active version of a dynasty stops the dynasty running, with no substitution. 'active' restores it, re-pushing its Windmill flow first; it is rejected with 409 when another version of the same dynasty is already active, because at most one version per dynasty may be active. Idempotent.",
+        "tags": [
+          "Workflows"
+        ],
+        "security": [
+          {
+            "apiKey": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Internal org UUID (from client-service). Required."
+            },
+            "required": true,
+            "description": "Internal org UUID (from client-service). Required.",
+            "name": "x-org-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Internal user UUID (from client-service). Required."
+            },
+            "required": true,
+            "description": "Internal user UUID (from client-service). Required.",
+            "name": "x-user-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Run ID for tracing across services. Required."
+            },
+            "required": true,
+            "description": "Run ID for tracing across services. Required.",
+            "name": "x-run-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Campaign ID for tracking. Optional on non-execute endpoints."
+            },
+            "required": false,
+            "description": "Campaign ID for tracking. Optional on non-execute endpoints.",
+            "name": "x-campaign-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Brand ID(s) as CSV (e.g. 'uuid1,uuid2'). Optional on non-execute endpoints."
+            },
+            "required": false,
+            "description": "Brand ID(s) as CSV (e.g. 'uuid1,uuid2'). Optional on non-execute endpoints.",
+            "name": "x-brand-id",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Workflow slug for tracking. Optional on non-execute endpoints."
+            },
+            "required": false,
+            "description": "Workflow slug for tracking. Optional on non-execute endpoints.",
+            "name": "x-workflow-slug",
+            "in": "header"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "description": "Feature slug from features-service. Optional on non-execute endpoints."
+            },
+            "required": false,
+            "description": "Feature slug from features-service. Optional on non-execute endpoints.",
+            "name": "x-feature-slug",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WorkflowStatusUpdate"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Workflow status set",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkflowResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid body or workflow ID",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Workflow not found",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Another version of this dynasty is already active",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Windmill flow could not be re-pushed while re-activating",
             "content": {
               "application/json": {
                 "schema": {
@@ -4166,10 +4368,10 @@
                 "deprecated",
                 "all"
               ],
-              "description": "Filter by workflow status. Defaults to 'active'."
+              "description": "Filter by workflow status. Defaults to 'active', which means EXECUTABLE: the version is active AND its dynasty is not retired. 'deprecated' returns every non-executable row (version deprecated, or dynasty retired). 'all' returns everything."
             },
             "required": false,
-            "description": "Filter by workflow status. Defaults to 'active'.",
+            "description": "Filter by workflow status. Defaults to 'active', which means EXECUTABLE: the version is active AND its dynasty is not retired. 'deprecated' returns every non-executable row (version deprecated, or dynasty retired). 'all' returns everything.",
             "name": "status",
             "in": "query"
           }
