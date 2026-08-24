@@ -178,6 +178,14 @@ async function startWorkflowExecution(params: {
         }
       }
       const flowInputs = {
+        // Today's date, as the LLM prompt templates expect it ("Today is
+        // {{currentDate}}"). The generated DAGs have always referenced
+        // `flow_input.currentDate`, but nothing ever put it here, so every
+        // generation rendered an empty string and the model was told nothing
+        // about the date. Declared BEFORE the spread so an explicit caller
+        // input still wins (replays, tests); everything below the spread is
+        // platform-owned and deliberately overrides the caller.
+        currentDate: new Date().toISOString().split("T")[0],
         ...body.inputs,
         orgId,
         userId,
