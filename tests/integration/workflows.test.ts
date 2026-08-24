@@ -146,10 +146,16 @@ vi.mock("../../src/lib/api-registry-client.js", () => ({
 // Mock features-client
 vi.mock("../../src/lib/features-client.js", () => ({}));
 
+// Shared so a test can assert the flow was never pushed (e.g. on a conflict,
+// which must not leave an orphan flow behind in Windmill).
+const { mockCreateFlow } = vi.hoisted(() => ({
+  mockCreateFlow: vi.fn().mockResolvedValue("f/workflows/test/flow"),
+}));
+
 // Mock Windmill client
 vi.mock("../../src/lib/windmill-client.js", () => ({
   getWindmillClient: () => ({
-    createFlow: vi.fn().mockResolvedValue("f/workflows/test/flow"),
+    createFlow: mockCreateFlow,
     updateFlow: vi.fn().mockResolvedValue(undefined),
     deleteFlow: vi.fn().mockResolvedValue(undefined),
     getFlow: vi.fn().mockResolvedValue({ path: "f/workflows/test/flow" }),
@@ -178,6 +184,7 @@ const WF_DAG_REJECT_ID = "00000000-0000-4000-8000-000000000007";
 describe("POST /workflows", () => {
   beforeEach(() => {
     mockDbRows.length = 0;
+    mockCreateFlow.mockClear();
   });
 
   it("creates a workflow with valid DAG", async () => {
@@ -221,6 +228,40 @@ describe("POST /workflows", () => {
 
     expect(res.status).toBe(201);
     expect(res.body.tags).toEqual(["email", "linkedin"]);
+  });
+
+  // The partial unique index idx_workflows_active_sig covers
+  // (feature_slug, signature) WHERE status='active'. Without this guard the
+  // insert violates it and the caller gets a raw Postgres 500 instead of being
+  // told which workflow already covers the DAG — the fork path (PUT) has
+  // answered 409 here all along.
+  it("returns 409 when an active workflow in the feature already holds this signature", async () => {
+    mockSelectResponses.length = 0;
+    mockSelectResponses.push([
+      {
+        id: "11111111-1111-4111-8111-111111111111",
+        workflowSlug: "sales-cold-email-outreach-granite",
+        workflowName: "Sales Cold Email Outreach Granite",
+      },
+    ]);
+
+    const res = await request
+      .post("/workflows")
+      .set(AUTH)
+      .send({
+        featureSlug: "sales-cold-email-outreach",
+        dag: VALID_LINEAR_DAG,
+      });
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe("A workflow with this DAG signature already exists");
+    expect(res.body.existingWorkflowId).toBe("11111111-1111-4111-8111-111111111111");
+    expect(res.body.existingWorkflowSlug).toBe("sales-cold-email-outreach-granite");
+    expect(res.body.existingWorkflowName).toBe("Sales Cold Email Outreach Granite");
+    // Nothing was written, and no Windmill flow was left behind.
+    expect(mockDbRows).toHaveLength(0);
+    expect(mockCreateFlow).not.toHaveBeenCalled();
+    mockSelectResponses.length = 0;
   });
 
   it("rejects an invalid DAG (unknown node type rejected by Zod enum)", async () => {

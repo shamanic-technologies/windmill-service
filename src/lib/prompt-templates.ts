@@ -86,19 +86,20 @@ Use "script" for small inline transforms (date stamping, normalisation, simple s
 - config.language (optional, default "bun"): "bun" | "deno". Windmill compiles to rawscript.
 - inputMapping: declares the args of \`main\`. Each key in inputMapping becomes a positional argument of \`main\` in declaration order. Example: \`{ "first": "$ref:flow_input.firstName", "last": "$ref:flow_input.lastName" }\` → signature \`export async function main(first: string, last: string)\`.
 
-Example — inject \`currentDate\` for a downstream LLM prompt:
+Example — normalise a value before passing it on:
 
 \`\`\`json
 {
-  "id": "get-date",
+  "id": "normalise-domain",
   "type": "script",
   "config": {
-    "code": "export async function main() { return { currentDate: new Date().toISOString().split('T')[0] }; }"
-  }
+    "code": "export async function main(url) { return { domain: new URL(url).hostname.replace(/^www\\\\./, '') }; }"
+  },
+  "inputMapping": { "url": "$ref:fetch-lead.output.lead.data.organization.websiteUrl" }
 }
 \`\`\`
 
-Then map it downstream: \`"body.variables.currentDate": "$ref:get-date.output.currentDate"\`.
+Do NOT write a script node for the current date. \`currentDate\` (ISO \`YYYY-MM-DD\`) is supplied automatically on every execution — map it straight from \`"body.variables.currentDate": "$ref:flow_input.currentDate"\`. A node for it costs a Windmill step on every single run for a value the dispatcher already has.
 
 ## Input Mapping ($ref syntax)
 
