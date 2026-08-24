@@ -54,6 +54,37 @@ function formatRun(r: typeof workflowRuns.$inferSelect) {
 }
 
 type WorkflowRow = typeof workflows.$inferSelect;
+
+/**
+ * Refuse to run a workflow whose dynasty was retired.
+ *
+ * Retirement is written on both axes (see PUT /workflows/dynasty/{slug}/status),
+ * so in the ordinary case a retired dynasty has no active version left and never
+ * reaches here. This is the second half of the guarantee, for the row that is
+ * dynasty-retired while still carrying status='active' — an upgrade landing on a
+ * retired lineage, a restore of an older backup, a direct database write. The
+ * word "deprecated" has to mean "does not run", whichever axis says it.
+ *
+ * Refusing is the whole point: nothing is substituted for a retired workflow.
+ * 410 rather than 404 because the workflow exists and is knowable, it is just
+ * gone for good — same code the deprecated-version paths already answer with.
+ */
+function refuseIfDynastyRetired(res: Response, workflow: WorkflowRow): boolean {
+  if (workflow.workflowDynastyStatus !== "deprecated") return false;
+
+  console.warn(
+    `[workflow-service] Refusing to execute "${workflow.workflowSlug}" (${workflow.id}): ` +
+    `dynasty "${workflow.workflowDynastySlug}" is deprecated`,
+  );
+  res.status(410).json({
+    error: `Workflow dynasty "${workflow.workflowDynastySlug}" has been deprecated`,
+    workflowDynastySlug: workflow.workflowDynastySlug,
+    upgradedTo: null,
+    upgradedToWorkflowSlug: null,
+  });
+  return true;
+}
+
 type ExecuteBody = {
   inputs?: Record<string, unknown>;
   attributionContext?: Record<string, unknown>;
@@ -341,6 +372,8 @@ router.post(
         }
       }
 
+      if (refuseIfDynastyRetired(res, workflow)) return;
+
       traceEvent(res.locals.runId as string, { service: "workflow-service", event: "execute-by-slug", detail: `Resolved slug="${req.params.slug}" to workflow="${workflow.workflowSlug}" (${workflow.id})` }, req.headers).catch(() => {});
 
       if (!workflow.windmillFlowPath) {
@@ -415,6 +448,8 @@ router.post("/workflows/:id/execute", requireApiKey, requireExecutionHeaders, ex
       res.status(404).json({ error: "Workflow not found" });
       return;
     }
+
+    if (refuseIfDynastyRetired(res, workflow)) return;
 
     traceEvent(res.locals.runId as string, { service: "workflow-service", event: "execute-by-id", detail: `Resolved id="${req.params.id}" to workflow="${workflow.workflowSlug}"` }, req.headers).catch(() => {});
 

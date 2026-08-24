@@ -218,8 +218,8 @@ export const WorkflowResponseSchema = z
     workflowDynastySignatureName: z.string().describe("Poetic word for this lineage (e.g. 'sequoia'). Set once at lineage creation. Unique among all workflows (any status, any org) within the same featureSlug."),
     version: z.number().int().describe("Version number within the lineage. Starts at 1."),
     dag: z.unknown().describe("The DAG definition as submitted."),
-    status: z.enum(["active", "deprecated"]).describe("Per-version lifecycle status. Only active workflows can be executed. Within a dynasty the latest version is 'active' and predecessors are 'deprecated'. Distinct from `workflowDynastyStatus`."),
-    workflowDynastyStatus: z.enum(["active", "deprecated"]).describe("Dynasty-level status. 'deprecated' means the entire lineage was deprecated on demand (staff action); 'active' otherwise. Constant across all versions of a dynasty. Set via PUT /workflows/dynasty/{workflowDynastySlug}/status."),
+    status: z.enum(["active", "deprecated"]).describe("Per-version lifecycle status. Only active workflows can be executed. Within a dynasty the latest version is 'active' and predecessors are 'deprecated'. Set on demand via PUT /workflows/{id}/status. Distinct from `workflowDynastyStatus`."),
+    workflowDynastyStatus: z.enum(["active", "deprecated"]).describe("Dynasty-level status. 'deprecated' means the entire lineage is retired: no version of it can be executed (execute returns 410) and it is not listed as an active candidate. Constant across all versions of a dynasty. Set via PUT /workflows/dynasty/{workflowDynastySlug}/status."),
     creationType: z.enum(["scratch", "upgrade", "fork"]).describe(
       "How this workflow was created: 'scratch' = brand-new dynasty, 'upgrade' = new version of an existing dynasty, 'fork' = forked from another workflow."
     ),
@@ -558,6 +558,11 @@ export const WorkflowFromDescriptionResultSchema = z
     signature: z.string().describe("SHA-256 hash of the canonical DAG JSON."),
     workflowDynastySignatureName: z.string().describe("Poetic word for this lineage."),
     version: z.number().int().describe("Version number within the lineage."),
+    workflowDynastyStatus: z.enum(["active", "deprecated"]).describe(
+      "Dynasty-level status, inherited from the lineage. 'deprecated' means the lineage is " +
+      "retired, so the workflow named here cannot be executed — upgrading a retired dynasty " +
+      "does not un-retire it."
+    ),
     action: z.enum(["created", "updated", "upgraded", "existing"]).describe(
       "What happened: 'created' = new dynasty inserted (creation_type='scratch'), " +
       "'existing' = matching active workflow already exists with same signature, " +
@@ -646,7 +651,11 @@ export const RankedWorkflowObjectiveSchema = z
 export const PublicWorkflowsQuerySchema = z
   .object({
     featureSlugs: z.string().min(1).describe("Comma-separated list of versioned feature slugs."),
-    status: z.enum(["active", "deprecated", "all"]).optional().describe("Filter by workflow status. Defaults to 'active'."),
+    status: z.enum(["active", "deprecated", "all"]).optional().describe(
+      "Filter by workflow status. Defaults to 'active', which means EXECUTABLE: the version " +
+      "is active AND its dynasty is not retired. 'deprecated' returns every non-executable " +
+      "row (version deprecated, or dynasty retired). 'all' returns everything."
+    ),
   })
   .openapi("PublicWorkflowsQuery");
 
@@ -658,7 +667,11 @@ export const PublicWorkflowItemSchema = z
     workflowDynastySlug: z.string().describe("Stable dynasty slug across versions."),
     workflowDynastyName: z.string().describe("Stable dynasty name across versions."),
     version: z.number().int().describe("Version number within the lineage."),
-    status: z.string().describe("Workflow status: active or deprecated."),
+    status: z.string().describe("Per-version lifecycle status: active or deprecated."),
+    workflowDynastyStatus: z.enum(["active", "deprecated"]).describe(
+      "Dynasty-level status. 'deprecated' means the whole lineage is retired and cannot execute, " +
+      "whatever this row's per-version `status` says. A row is executable only when both are 'active'."
+    ),
     featureSlug: z.string().describe("Feature slug."),
     createdForBrandId: z.string().nullable().describe("Brand ID this workflow was created for, or null."),
     upgradedTo: z.string().uuid().nullable().describe("ID of the active workflow this one was upgraded to, computed from successor lineage. Null when this is the active row or no successor was found in the result set."),
@@ -725,8 +738,9 @@ export const WorkflowListItemSchema = WorkflowResponseSchema.extend({
 export const DynastyStatusUpdateSchema = z
   .object({
     status: z.enum(["active", "deprecated"]).describe(
-      "New dynasty-level status. 'deprecated' marks the entire lineage deprecated; " +
-      "'active' reactivates it. Idempotent — re-applying the same status is a no-op success."
+      "New dynasty-level status. 'deprecated' retires the entire lineage: no version of it " +
+      "can be executed any more (every execute returns 410) and it stops being listed as an " +
+      "active candidate. 'active' un-retires it. Idempotent — re-applying the same status is a no-op success."
     ),
   })
   .openapi("DynastyStatusUpdate");
@@ -735,8 +749,26 @@ export const DynastyStatusResponseSchema = z
   .object({
     workflowDynastySlug: z.string().describe("The dynasty slug whose status was set."),
     status: z.enum(["active", "deprecated"]).describe("The dynasty's status after the write."),
+    updatedWorkflows: z.number().int().describe("How many version rows in the lineage carry the new status."),
+    activeWorkflowSlug: z.string().nullable().describe(
+      "The workflow slug left executable. Null when the dynasty was retired — a retired dynasty " +
+      "has no executable version, and nothing is substituted for it."
+    ),
   })
   .openapi("DynastyStatusResponse");
+
+// --- Per-version status write (PUT /workflows/{id}/status) ---
+
+export const WorkflowStatusUpdateSchema = z
+  .object({
+    status: z.enum(["active", "deprecated"]).describe(
+      "New per-version lifecycle status. 'deprecated' retires THIS version only: it can no " +
+      "longer be executed by id, and it stops being the dynasty's execution target when " +
+      "resolving by slug. 'active' restores it — rejected with 409 when another version of " +
+      "the same dynasty is already active. Idempotent."
+    ),
+  })
+  .openapi("WorkflowStatusUpdate");
 
 // --- Workflow conflict response (409 on PUT /workflows/:id) ---
 
@@ -946,12 +978,14 @@ registry.registerPath({
 registry.registerPath({
   method: "put",
   path: "/workflows/dynasty/{workflowDynastySlug}/status",
-  summary: "Set a workflow dynasty's status (active/deprecated)",
+  summary: "Retire or un-retire a whole workflow dynasty",
   description:
     "Marks an entire workflow dynasty (lineage) active or deprecated. Applies to " +
     "every version in the dynasty. Idempotent — re-applying the same status is a " +
-    "no-op success. Does not affect the per-version lifecycle `status` or execution " +
-    "resolution; it only sets the dynasty-level flag surfaced as `status` on GET /workflows.",
+    "no-op success. A deprecated dynasty is RETIRED: every execute against any of its " +
+    "versions returns 410, and it is excluded from the default (active) workflow " +
+    "listings, so rankers and pickers stop offering it. It does not change the " +
+    "per-version lifecycle `status`, so un-retiring restores the same active version.",
   tags: ["Workflows"],
   security: [{ apiKey: [] }],
   request: {
@@ -979,6 +1013,51 @@ registry.registerPath({
 });
 
 registry.registerPath({
+  method: "put",
+  path: "/workflows/{id}/status",
+  summary: "Retire or un-retire a single workflow version",
+  description:
+    "Sets the per-version lifecycle `status` of one workflow. 'deprecated' retires that " +
+    "version: executing it by id returns 410, and it stops being the version a dynasty-slug " +
+    "execute resolves forward to — so retiring the only active version of a dynasty stops " +
+    "the dynasty running, with no substitution. 'active' restores it, re-pushing its Windmill " +
+    "flow first; it is rejected with 409 when another version of the same dynasty is already " +
+    "active, because at most one version per dynasty may be active. Idempotent.",
+  tags: ["Workflows"],
+  security: [{ apiKey: [] }],
+  request: {
+    headers: IdentityHeaders,
+    params: z.object({ id: z.string().uuid() }),
+    body: {
+      required: true,
+      content: { "application/json": { schema: WorkflowStatusUpdateSchema } },
+    },
+  },
+  responses: {
+    200: {
+      description: "Workflow status set",
+      content: { "application/json": { schema: WorkflowResponseSchema } },
+    },
+    400: {
+      description: "Invalid body or workflow ID",
+      content: { "application/json": { schema: ErrorResponseSchema } },
+    },
+    404: {
+      description: "Workflow not found",
+      content: { "application/json": { schema: ErrorResponseSchema } },
+    },
+    409: {
+      description: "Another version of this dynasty is already active",
+      content: { "application/json": { schema: ErrorResponseSchema } },
+    },
+    502: {
+      description: "Windmill flow could not be re-pushed while re-activating",
+      content: { "application/json": { schema: ErrorResponseSchema } },
+    },
+  },
+});
+
+registry.registerPath({
   method: "get",
   path: "/workflows",
   summary: "List workflows",
@@ -998,7 +1077,11 @@ registry.registerPath({
       channel: WorkflowChannelSchema.optional(),
       audienceType: WorkflowAudienceTypeSchema.optional(),
       tag: z.string().optional().describe("Filter workflows that contain this tag."),
-      status: z.string().optional().describe("Filter by status. Defaults to 'active'. Use 'all' to include deprecated workflows."),
+      status: z.string().optional().describe(
+        "Filter by status. Defaults to 'active', which means EXECUTABLE: the version is active " +
+        "AND its dynasty is not retired — so a retired dynasty stops being offered as a candidate. " +
+        "Use 'all' to include deprecated workflows."
+      ),
     }),
   },
   responses: {

@@ -15,45 +15,53 @@ const mockDbRows: Record<string, unknown>[] = [];
 // Optional queue: when populated, select().from().where() shifts from it instead of returning mockDbRows
 const mockSelectResponses: Record<string, unknown>[][] = [];
 
-vi.mock("../../src/db/index.js", () => ({
-  db: {
-    insert: () => ({
-      values: (row: Record<string, unknown>) => {
-        const newRow = {
-          id: crypto.randomUUID(),
-          ...row,
-          windmillWorkspace: row.windmillWorkspace ?? "prod",
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        };
-        mockDbRows.push(newRow);
+// Hoisted: vi.mock factories run before module-scope consts are initialised,
+// so the shared db mock has to exist before the app module is imported.
+const { mockDb } = vi.hoisted(() => ({ mockDb: {} as Record<string, unknown> }));
+Object.assign(mockDb, {
+  // The dynasty-status route wraps its two updates in a transaction; this mock
+  // has no isolation to offer, so it just runs the callback against itself.
+  transaction: (fn: (tx: unknown) => unknown) => Promise.resolve(fn(mockDb)),
+  insert: () => ({
+    values: (row: Record<string, unknown>) => {
+      const newRow = {
+        id: crypto.randomUUID(),
+        ...row,
+        windmillWorkspace: row.windmillWorkspace ?? "prod",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+      mockDbRows.push(newRow);
+      return {
+        returning: () => Promise.resolve([newRow]),
+      };
+    },
+  }),
+  select: () => ({
+    from: () => {
+      const result = Promise.resolve(mockDbRows);
+      (result as any).where = (_condition?: unknown) =>
+        Promise.resolve(
+          mockSelectResponses.length > 0 ? mockSelectResponses.shift()! : mockDbRows,
+        );
+      return result;
+    },
+  }),
+  update: () => ({
+    set: (values: Record<string, unknown>) => ({
+      where: () => {
+        const row = mockDbRows[mockDbRows.length - 1];
+        if (row) Object.assign(row, values);
         return {
-          returning: () => Promise.resolve([newRow]),
+          returning: () => Promise.resolve([{ ...row, ...values }]),
         };
       },
     }),
-    select: () => ({
-      from: () => {
-        const result = Promise.resolve(mockDbRows);
-        (result as any).where = (_condition?: unknown) =>
-          Promise.resolve(
-            mockSelectResponses.length > 0 ? mockSelectResponses.shift()! : mockDbRows,
-          );
-        return result;
-      },
-    }),
-    update: () => ({
-      set: (values: Record<string, unknown>) => ({
-        where: () => {
-          const row = mockDbRows[mockDbRows.length - 1];
-          if (row) Object.assign(row, values);
-          return {
-            returning: () => Promise.resolve([{ ...row, ...values }]),
-          };
-        },
-      }),
-    }),
-  },
+  }),
+});
+
+vi.mock("../../src/db/index.js", () => ({
+  db: mockDb,
   sql: {
     end: () => Promise.resolve(),
   },
@@ -89,6 +97,17 @@ const buildContentGenSpec = () => ({
                   variables: {
                     type: "object",
                     additionalProperties: true,
+                  },
+                  // Version-free alias drawn from a closed set, as deployed.
+                  model: {
+                    type: "string",
+                    enum: [
+                      "haiku", "sonnet", "opus",
+                      "flash-lite", "flash", "flash-pro", "pro",
+                      "deepseek-flash", "deepseek-pro",
+                      "glm-flash", "glm-pro",
+                      "kimi-flash", "kimi-pro",
+                    ],
                   },
                 },
                 required: ["type"],
@@ -137,15 +156,16 @@ vi.mock("../../src/lib/features-client.js", () => ({}));
 
 // Shared so a test can assert the flow was never pushed (e.g. on a conflict,
 // which must not leave an orphan flow behind in Windmill).
-const { mockCreateFlow } = vi.hoisted(() => ({
+const { mockCreateFlow, mockUpdateFlow } = vi.hoisted(() => ({
   mockCreateFlow: vi.fn().mockResolvedValue("f/workflows/test/flow"),
+  mockUpdateFlow: vi.fn().mockResolvedValue(undefined),
 }));
 
 // Mock Windmill client
 vi.mock("../../src/lib/windmill-client.js", () => ({
   getWindmillClient: () => ({
     createFlow: mockCreateFlow,
-    updateFlow: vi.fn().mockResolvedValue(undefined),
+    updateFlow: mockUpdateFlow,
     deleteFlow: vi.fn().mockResolvedValue(undefined),
     getFlow: vi.fn().mockResolvedValue({ path: "f/workflows/test/flow" }),
     healthCheck: vi.fn().mockResolvedValue(true),
@@ -1244,6 +1264,110 @@ describe("UUID validation on :id routes", () => {
   });
 });
 
+// Every route that stores a client-supplied DAG runs the full gate, not just
+// topology. Before this, only the LLM generation path resolved the target
+// service's OpenAPI schema, which is how three workflows came to carry
+// `"model": "deepseek-flash-v4"` — an alias content-generation does not accept,
+// shape-valid, and rejected by the service on every call.
+describe("client-supplied DAGs are validated against live endpoint schemas", () => {
+  const dagWithModel = (model: string) => ({
+    nodes: [
+      {
+        id: "email-generate",
+        type: "http.call",
+        config: {
+          service: "content-generation",
+          method: "POST",
+          path: "/generate",
+          body: { type: "cold-email", variables: {}, model },
+        },
+      },
+    ],
+    edges: [],
+  });
+
+  const BAD = dagWithModel("deepseek-flash-v4");
+  const GOOD = dagWithModel("deepseek-pro");
+
+  const seedActiveRow = () => {
+    mockDbRows.length = 0;
+    mockDbRows.push({
+      id: WF_HTTP_ID,
+      orgId: "org-1",
+      workflowSlug: "sales-cold-email-outreach-eden",
+      workflowName: "Sales Cold Email Outreach Eden",
+      workflowDynastySlug: "sales-cold-email-outreach-eden",
+      workflowDynastyName: "Sales Cold Email Outreach Eden",
+      workflowDynastySignatureName: "eden",
+      featureSlug: "sales-cold-email-outreach",
+      category: "sales",
+      channel: "email",
+      audienceType: "cold-outreach",
+      version: 1,
+      status: "active",
+      signature: "sig-existing",
+      dag: VALID_LINEAR_DAG,
+      tags: [],
+      description: "existing",
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+  };
+
+  beforeEach(() => {
+    mockDbRows.length = 0;
+    mockSelectResponses.length = 0;
+  });
+
+  it("POST /workflows rejects an invented model identifier", async () => {
+    const res = await request.post("/workflows").set(AUTH).send({
+      featureSlug: "sales-cold-email-outreach",
+      category: "sales",
+      channel: "email",
+      audienceType: "cold-outreach",
+      dag: BAD,
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("DAG endpoint validation failed");
+    expect(JSON.stringify(res.body.details)).toContain("deepseek-flash-v4");
+  });
+
+  it("POST /workflows accepts the same DAG once the model is a real alias", async () => {
+    const res = await request.post("/workflows").set(AUTH).send({
+      featureSlug: "sales-cold-email-outreach",
+      category: "sales",
+      channel: "email",
+      audienceType: "cold-outreach",
+      dag: GOOD,
+    });
+
+    expect(res.status).toBe(201);
+  });
+
+  it("PUT /workflows/:id rejects an invented model identifier on the fork path", async () => {
+    seedActiveRow();
+    mockSelectResponses.push([mockDbRows[0]]);
+
+    const res = await request.put(`/workflows/${WF_HTTP_ID}`).set(AUTH).send({ dag: BAD });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("DAG endpoint validation failed");
+  });
+
+  it("POST /workflows/upgrade rejects an invented model identifier in a client-supplied dag", async () => {
+    seedActiveRow();
+
+    const res = await request.post("/workflows/upgrade").set(AUTH).send({
+      workflowDynastySlug: "sales-cold-email-outreach-eden",
+      dag: BAD,
+    });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("DAG endpoint validation failed");
+  });
+});
+
 describe("POST /workflows/upgrade (workflowDynastySlug lookup)", () => {
   beforeEach(() => {
     mockDbRows.length = 0;
@@ -1377,6 +1501,133 @@ describe("POST /workflows/upgrade (workflowDynastySlug lookup)", () => {
   });
 });
 
+describe("PUT /workflows/:id/status", () => {
+  const VERSION_ID = "00000000-0000-4000-8000-0000000005ff";
+
+  beforeEach(() => {
+    mockDbRows.length = 0;
+    mockSelectResponses.length = 0;
+    mockFetchProviderRequirements.mockReset();
+    mockFetchProviderRequirements.mockResolvedValue({ requirements: [], providers: [] });
+    mockUpdateFlow.mockClear();
+  });
+
+  function pushVersionRow(overrides: Record<string, unknown> = {}) {
+    const row = {
+      id: VERSION_ID,
+      orgId: "org-1",
+      workflowSlug: "sales-cold-email-outreach-camellia-v2",
+      workflowName: "Sales Cold Email Outreach Camellia v2",
+      workflowDynastySlug: "sales-cold-email-outreach-camellia",
+      workflowDynastyName: "Sales Cold Email Outreach Camellia",
+      featureSlug: "sales-cold-email-outreach",
+      version: 2,
+      status: "active",
+      workflowDynastyStatus: "active",
+      windmillFlowPath: "f/workflows/org_1/camellia_v2",
+      dag: VALID_LINEAR_DAG,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      ...overrides,
+    };
+    mockDbRows.push(row);
+    return row;
+  }
+
+  it("retires a single version", async () => {
+    const row = pushVersionRow();
+    mockSelectResponses.push([row]); // id lookup
+
+    const res = await request
+      .put(`/workflows/${VERSION_ID}/status`)
+      .set(AUTH)
+      .send({ status: "deprecated" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("deprecated");
+    expect(mockDbRows[0].status).toBe("deprecated");
+  });
+
+  it("is idempotent — re-applying the same status is a no-op success", async () => {
+    const row = pushVersionRow({ status: "deprecated" });
+    mockSelectResponses.push([row]);
+
+    const res = await request
+      .put(`/workflows/${VERSION_ID}/status`)
+      .set(AUTH)
+      .send({ status: "deprecated" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("deprecated");
+  });
+
+  it("refuses to re-activate a version while another one in the dynasty is active", async () => {
+    const row = pushVersionRow({ status: "deprecated" });
+    mockSelectResponses.push(
+      [row],                                                        // id lookup
+      [{ id: "00000000-0000-4000-8000-0000000006aa", workflowSlug: "sales-cold-email-outreach-camellia-v3" }], // conflict lookup
+    );
+
+    const res = await request
+      .put(`/workflows/${VERSION_ID}/status`)
+      .set(AUTH)
+      .send({ status: "active" });
+
+    expect(res.status).toBe(409);
+    expect(res.body.existingWorkflowSlug).toBe("sales-cold-email-outreach-camellia-v3");
+    // The refused write must not have touched the row.
+    expect(mockDbRows[0].status).toBe("deprecated");
+  });
+
+  it("re-activates a version when no other one in the dynasty is active", async () => {
+    const row = pushVersionRow({ status: "deprecated" });
+    mockSelectResponses.push([row], []); // id lookup, then no conflict
+
+    const res = await request
+      .put(`/workflows/${VERSION_ID}/status`)
+      .set(AUTH)
+      .send({ status: "active" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe("active");
+    // The Windmill flow is re-pushed before the row goes live again, because the
+    // orphan-flow sweeper deletes flows of deprecated workflows.
+    expect(mockUpdateFlow).toHaveBeenCalledWith(
+      "f/workflows/org_1/camellia_v2",
+      expect.objectContaining({ summary: "sales-cold-email-outreach-camellia-v2" }),
+    );
+  });
+
+  it("returns 404 for an unknown workflow id", async () => {
+    mockSelectResponses.push([]);
+
+    const res = await request
+      .put("/workflows/00000000-0000-4000-8000-00000000dead/status")
+      .set(AUTH)
+      .send({ status: "deprecated" });
+
+    expect(res.status).toBe(404);
+  });
+
+  it("rejects a malformed workflow id", async () => {
+    const res = await request
+      .put("/workflows/not-a-uuid/status")
+      .set(AUTH)
+      .send({ status: "deprecated" });
+
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects an unknown status value", async () => {
+    const res = await request
+      .put(`/workflows/${VERSION_ID}/status`)
+      .set(AUTH)
+      .send({ status: "retired" });
+
+    expect(res.status).toBe(400);
+  });
+});
+
 describe("PUT /workflows/dynasty/:workflowDynastySlug/status", () => {
   const DYNASTY = "sales-cold-email-outreach-sequoia";
 
@@ -1415,7 +1666,43 @@ describe("PUT /workflows/dynasty/:workflowDynastySlug/status", () => {
       .send({ status: "deprecated" });
 
     expect(res.status).toBe(200);
-    expect(res.body).toEqual({ workflowDynastySlug: DYNASTY, status: "deprecated" });
+    expect(res.body).toEqual({
+      workflowDynastySlug: DYNASTY,
+      status: "deprecated",
+      updatedWorkflows: 1,
+      // Nothing is substituted for a retired dynasty — it has no executable version.
+      activeWorkflowSlug: null,
+    });
+  });
+
+  it("retiring a dynasty also retires its versions, so nothing stays executable", async () => {
+    pushDynastyRow();
+
+    const res = await request
+      .put(`/workflows/dynasty/${DYNASTY}/status`)
+      .set(AUTH)
+      .send({ status: "deprecated" });
+
+    expect(res.status).toBe(200);
+    // Both axes, not just the dynasty one: every consumer that picks a workflow
+    // to run reads the per-version status, so retirement has to be written there
+    // too or the dynasty keeps being offered as a candidate.
+    expect(mockDbRows[0].workflowDynastyStatus).toBe("deprecated");
+    expect(mockDbRows[0].status).toBe("deprecated");
+  });
+
+  it("un-retiring restores the highest version as the active one", async () => {
+    pushDynastyRow({ status: "deprecated", workflowDynastyStatus: "deprecated" });
+
+    const res = await request
+      .put(`/workflows/dynasty/${DYNASTY}/status`)
+      .set(AUTH)
+      .send({ status: "active" });
+
+    expect(res.status).toBe(200);
+    expect(res.body.activeWorkflowSlug).toBe(DYNASTY);
+    expect(mockDbRows[0].status).toBe("active");
+    expect(mockDbRows[0].workflowDynastyStatus).toBe("active");
   });
 
   it("round-trip: list reflects the dynasty status after deprecate then reactivate", async () => {
@@ -1433,7 +1720,9 @@ describe("PUT /workflows/dynasty/:workflowDynastySlug/status", () => {
       .send({ status: "deprecated" });
     expect(dep.status).toBe(200);
 
-    list = await request.get("/workflows").set(AUTH);
+    // ?status=all, because the default listing is the RUNNABLE set and a retired
+    // dynasty is deliberately absent from it.
+    list = await request.get("/workflows").query({ status: "all" }).set(AUTH);
     expect(list.body.workflows[0].status).toBe("deprecated");
     expect(list.body.workflows[0].workflowDynastyStatus).toBe("deprecated");
 
