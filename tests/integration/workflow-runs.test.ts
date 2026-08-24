@@ -529,6 +529,39 @@ describe("POST /workflows/:id/execute", () => {
     expect(res.body.upgradedTo).toBe(WF_NEW_ID);
   });
 
+  // A retired dynasty must not produce a run. Retiring writes both status axes,
+  // so in practice such a row is already status='deprecated' and never gets here;
+  // this covers the row that is dynasty-retired while still marked active — an
+  // upgrade landing on a retired lineage, a restored backup, a direct DB write.
+  it("returns 410 when the dynasty is retired, even though the version is active (by ID)", async () => {
+    mockWorkflows.push({
+      id: WF_ID,
+      orgId: "org-1",
+      workflowSlug: "retired-flow",
+      workflowName: "Retired Flow",
+      workflowDynastySlug: "retired-flow",
+      workflowDynastyName: "Retired Flow",
+      version: 1,
+      status: "active",
+      workflowDynastyStatus: "deprecated",
+      windmillFlowPath: "f/workflows/org_1/retired_flow",
+      windmillWorkspace: "prod",
+      dag: VALID_LINEAR_DAG,
+    });
+
+    const res = await request
+      .post(`/workflows/${WF_ID}/execute`)
+      .set(AUTH)
+      .send({ inputs: {} });
+
+    expect(res.status).toBe(410);
+    expect(res.body.error).toContain("retired-flow");
+    expect(res.body.workflowDynastySlug).toBe("retired-flow");
+    // Refusing is correct; nothing is substituted for a retired workflow.
+    expect(res.body.upgradedTo).toBeNull();
+    expect(mockRunFlow).not.toHaveBeenCalled();
+  });
+
   it("uses campaignId from header, not from workflow record or inputs", async () => {
     mockWorkflows.push({
       id: WF_ID,
@@ -914,6 +947,33 @@ describe("POST /workflows/by-slug/:slug/execute", () => {
     // Run is attributed to the executing org, not the deployer
     expect(res.body.orgId).toBe("b645207b-d8e9-40b0-9391-072b777cd9a9");
     expect(res.body.userId).toBe("user-b");
+  });
+
+  it("returns 410 when the dynasty is retired, even though the version is active (by slug)", async () => {
+    mockWorkflows.push({
+      id: WF_ID,
+      orgId: "org-1",
+      workflowSlug: "retired-slug-flow",
+      workflowName: "Retired Slug Flow",
+      workflowDynastySlug: "retired-slug-flow",
+      workflowDynastyName: "Retired Slug Flow",
+      version: 1,
+      status: "active",
+      workflowDynastyStatus: "deprecated",
+      windmillFlowPath: "f/workflows/org_1/retired_slug_flow",
+      windmillWorkspace: "prod",
+      dag: VALID_LINEAR_DAG,
+    });
+
+    const res = await request
+      .post("/workflows/by-slug/retired-slug-flow/execute")
+      .set(AUTH)
+      .send({ inputs: {} });
+
+    expect(res.status).toBe(410);
+    expect(res.body.workflowDynastySlug).toBe("retired-slug-flow");
+    expect(res.body.upgradedToWorkflowSlug).toBeNull();
+    expect(mockRunFlow).not.toHaveBeenCalled();
   });
 
   it("uses x-org-id header for identity (orgId not in body)", async () => {

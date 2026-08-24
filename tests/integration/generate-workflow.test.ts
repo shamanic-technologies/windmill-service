@@ -515,6 +515,50 @@ describe("POST /workflows/upgrade", () => {
     expect(res.body.workflow.version).toBe(1);
   });
 
+  // A retired lineage stays retired across an upgrade. Without inheriting the
+  // column the new row would default to dynasty-active, silently putting a
+  // dynasty someone retired back into rotation.
+  it("carries the dynasty status onto the upgraded version", async () => {
+    mockDbRows.push({
+      id: "00000000-0000-4000-8000-0000000000de",
+      orgId: "org-1",
+      featureSlug: "feature",
+      signature: "old-sig",
+      workflowDynastySignatureName: "camellia",
+      workflowSlug: "feature-camellia",
+      workflowName: "Feature Camellia",
+      workflowDynastySlug: "feature-camellia",
+      workflowDynastyName: "Feature Camellia",
+      version: 1,
+      tags: [],
+      status: "active",
+      workflowDynastyStatus: "deprecated",
+      dag: VALID_LINEAR_DAG,
+      description: "v1",
+      creationType: "scratch",
+      createdFromWorkflow: null,
+      windmillFlowPath: "f/workflows/org-1/feature_camellia",
+    });
+    // SELECT #1 dynasty lookup → active row; SELECT #2 signature-conflict → none.
+    mockSelectResponses.push([...mockDbRows], []);
+
+    mockGenerateWorkflow.mockResolvedValueOnce({
+      dag: { ...VALID_LINEAR_DAG, edges: [{ from: "x1", to: "y1" }] },
+      category: "sales",
+      channel: "email",
+      audienceType: "cold-outreach",
+      description: "Upgraded v2",
+    });
+
+    const res = await request
+      .post("/workflows/upgrade")
+      .set(AUTH)
+      .send({ workflowDynastySlug: "feature-camellia", description: "Upgrade a dynasty that was retired" });
+
+    expect(res.status).toBe(201);
+    expect(res.body.workflow.workflowDynastyStatus).toBe("deprecated");
+  });
+
   // AC6 — upgrade keeps the same workflow_dynasty_signature_name; v2 slug.
   it("preserves the dynasty signature name on upgrade and bumps to -v2", async () => {
     mockDbRows.push({

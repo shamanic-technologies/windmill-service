@@ -120,6 +120,7 @@ function makeWorkflow(overrides: Record<string, unknown> = {}) {
     windmillFlowPath: "f/workflows/test/flow",
     windmillWorkspace: "prod",
     status: "active",
+    workflowDynastyStatus: "active",
     upgradedTo: null,
     createdAt: new Date(),
     updatedAt: new Date(),
@@ -247,6 +248,9 @@ describe("GET /public/workflows", () => {
       workflowDynastyName: "Sales Cold Outreach Obsidian",
       version: 3,
       status: "active",
+      // Exposed so a consumer can tell an executable row from one whose whole
+      // lineage was retired — the per-version status alone cannot say.
+      workflowDynastyStatus: "active",
       featureSlug: "sales-cold-outreach-v2",
       createdForBrandId: "brand-123",
       upgradedTo: null,
@@ -256,6 +260,25 @@ describe("GET /public/workflows", () => {
     expect(w).not.toHaveProperty("orgId");
     expect(w).not.toHaveProperty("signature");
     expect(w).not.toHaveProperty("windmillFlowPath");
+  });
+
+  it("reports the dynasty status of a retired lineage", async () => {
+    const wf = makeWorkflow({
+      id: "wf-retired",
+      featureSlug: "feat-retired",
+      status: "active",
+      workflowDynastyStatus: "deprecated",
+    });
+    mockWorkflowRows.push(wf);
+
+    const res = await request
+      .get("/public/workflows")
+      .set(API_KEY)
+      .query({ featureSlugs: "feat-retired", status: "all" });
+
+    expect(res.status).toBe(200);
+    const w = res.body.workflows.find((x: { id: string }) => x.id === "wf-retired");
+    expect(w.workflowDynastyStatus).toBe("deprecated");
   });
 
   it("returns empty array when no workflows match", async () => {
