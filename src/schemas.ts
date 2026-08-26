@@ -136,18 +136,28 @@ export const DAGSchema = z
 // --- Workflow enums ---
 
 export const WorkflowCategorySchema = z
-  .enum(["sales", "pr", "outlets", "journalists"])
-  .describe("Workflow category.")
+  .enum(["sales", "pr", "outlets", "journalists", "advertising"])
+  .describe(
+    "Workflow category — the acquisition domain the workflow works in. " +
+      "\"advertising\" covers paid-reach channels (Google Ads, Meta Ads, and the rest of the paid family)."
+  )
   .openapi("WorkflowCategory");
 
 export const WorkflowChannelSchema = z
-  .enum(["email", "database"])
-  .describe("Workflow distribution channel.")
+  .enum(["email", "database", "ads"])
+  .describe(
+    "Workflow distribution channel — how the work reaches people. " +
+      "\"ads\" means the workflow buys placements on an ad platform rather than sending or storing anything."
+  )
   .openapi("WorkflowChannel");
 
 export const WorkflowAudienceTypeSchema = z
-  .enum(["cold-outreach", "discovery"])
-  .describe("Workflow audience type.")
+  .enum(["cold-outreach", "discovery", "audience-targeting"])
+  .describe(
+    "Workflow audience type — how the workflow relates to the people it reaches. " +
+      "\"audience-targeting\" means the audience is described to an ad platform as targeting criteria, " +
+      "not contacted one by one (\"cold-outreach\") and not collected into a database (\"discovery\")."
+  )
   .openapi("WorkflowAudienceType");
 
 // --- Workflow schemas ---

@@ -39,6 +39,7 @@ import { invalidateSpecWatcherCache } from "../lib/spec-watcher.js";
 import { syncFlowToWindmill } from "../lib/startup-validator.js";
 import { noteWorkflowWrite } from "../lib/periodic-cleanup.js";
 import { resolveStatusFilter } from "../lib/status-filter.js";
+import { constraintErrorResponse } from "../lib/db-error.js";
 
 const router = Router();
 
@@ -292,6 +293,12 @@ router.post("/workflows/create", requireApiKey, createRateLimit, async (req, res
   } catch (err: unknown) {
     if (err instanceof Error && err.name === "ZodError") {
       res.status(400).json({ error: "Validation error", details: err });
+      return;
+    }
+    const constraintError = constraintErrorResponse(err);
+    if (constraintError) {
+      console.error("[workflow-service] write rejected by the database:", err);
+      res.status(400).json(constraintError);
       return;
     }
     if (err instanceof GenerationValidationError) {
@@ -579,6 +586,12 @@ router.post("/workflows/upgrade", requireApiKey, createRateLimit, async (req, re
       res.status(400).json({ error: "Validation error", details: err });
       return;
     }
+    const constraintError = constraintErrorResponse(err);
+    if (constraintError) {
+      console.error("[workflow-service] write rejected by the database:", err);
+      res.status(400).json(constraintError);
+      return;
+    }
     if (err instanceof GenerationValidationError) {
       res.status(422).json({
         error: err.message,
@@ -715,6 +728,12 @@ router.post("/workflows", requireApiKey, createRateLimit, async (req, res) => {
   } catch (err: unknown) {
     if (err instanceof Error && err.name === "ZodError") {
       res.status(400).json({ error: "Validation error", details: err });
+      return;
+    }
+    const constraintError = constraintErrorResponse(err);
+    if (constraintError) {
+      console.error("[workflow-service] write rejected by the database:", err);
+      res.status(400).json(constraintError);
       return;
     }
     console.error("[workflow-service] POST error:", err);
@@ -916,6 +935,12 @@ router.put("/workflows/dynasty/:workflowDynastySlug/status", requireApiKey, asyn
       res.status(400).json({ error: "Validation error", details: err });
       return;
     }
+    const constraintError = constraintErrorResponse(err);
+    if (constraintError) {
+      console.error("[workflow-service] write rejected by the database:", err);
+      res.status(400).json(constraintError);
+      return;
+    }
     console.error("[workflow-service] PUT dynasty status error:", err);
     res.status(500).json({ error: "Internal server error" });
   }
@@ -1002,6 +1027,12 @@ router.put("/workflows/:id/status", requireApiKey, async (req, res) => {
   } catch (err: unknown) {
     if (err instanceof Error && err.name === "ZodError") {
       res.status(400).json({ error: "Validation error", details: err });
+      return;
+    }
+    const constraintError = constraintErrorResponse(err);
+    if (constraintError) {
+      console.error("[workflow-service] write rejected by the database:", err);
+      res.status(400).json(constraintError);
       return;
     }
     console.error("[workflow-service] PUT workflow status error:", err);
@@ -1454,6 +1485,12 @@ router.put("/workflows/:id", requireApiKey, async (req, res) => {
   } catch (err: unknown) {
     if (err instanceof Error && err.name === "ZodError") {
       res.status(400).json({ error: "Validation error", details: err });
+      return;
+    }
+    const constraintError = constraintErrorResponse(err);
+    if (constraintError) {
+      console.error("[workflow-service] write rejected by the database:", err);
+      res.status(400).json(constraintError);
       return;
     }
     console.error("[workflow-service] PUT update error:", err);

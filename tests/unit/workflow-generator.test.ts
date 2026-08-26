@@ -39,8 +39,20 @@ describe("buildSystemPrompt", () => {
     const prompt = buildSystemPrompt();
     expect(prompt).toContain('"sales"');
     expect(prompt).toContain('"pr"');
+    expect(prompt).toContain('"outlets"');
+    expect(prompt).toContain('"journalists"');
     expect(prompt).toContain('"email"');
+    expect(prompt).toContain('"database"');
     expect(prompt).toContain('"cold-outreach"');
+    expect(prompt).toContain('"discovery"');
+  });
+
+  it("offers a truthful vocabulary for a paid-reach workflow", () => {
+    const prompt = buildSystemPrompt();
+    expect(prompt).toContain('"advertising"');
+    expect(prompt).toContain('"ads"');
+    expect(prompt).toContain('"audience-targeting"');
+    expect(prompt).toContain("Google Ads");
   });
 
   it("includes service context when provided", () => {
@@ -218,6 +230,44 @@ describe("generateWorkflow", () => {
     await expect(
       generateWorkflow({ description: "test" }, TEST_IDENTITY),
     ).rejects.toThrow("API_REGISTRY_SERVICE_URL and API_REGISTRY_SERVICE_API_KEY must be set");
+  });
+
+  it("keeps the paid-reach vocabulary the model returns", async () => {
+    mockComplete.mockResolvedValueOnce(
+      createMockResponse(VALID_LINEAR_DAG, {
+        category: "advertising",
+        channel: "ads",
+        audienceType: "audience-targeting",
+      }),
+    );
+
+    const result = await generateWorkflow(
+      { description: "Run a Google Ads campaign for the brand" },
+      TEST_IDENTITY,
+    );
+
+    expect(result.category).toBe("advertising");
+    expect(result.channel).toBe("ads");
+    expect(result.audienceType).toBe("audience-targeting");
+    expect(mockComplete).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries, then fails loudly, when the model invents a dimension tag", async () => {
+    mockComplete.mockResolvedValue(
+      createMockResponse(VALID_LINEAR_DAG, { channel: "google-ads" }),
+    );
+
+    await expect(
+      generateWorkflow({ description: "Run a Google Ads campaign" }, TEST_IDENTITY),
+    ).rejects.toMatchObject({
+      name: "GenerationValidationError",
+      validationErrors: [
+        expect.objectContaining({
+          field: "channel",
+          message: expect.stringContaining('"google-ads"'),
+        }),
+      ],
+    });
   });
 
   it("returns valid DAG on first attempt", async () => {

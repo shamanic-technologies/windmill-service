@@ -221,6 +221,88 @@ describe("POST /workflows", () => {
     expect(res.body.windmillFlowPath).toContain("f/workflows/org-1/");
   });
 
+  it("creates a paid-reach workflow that describes itself truthfully", async () => {
+    const res = await request
+      .post("/workflows")
+      .set(AUTH)
+      .send({
+        createdForBrandId: "brand-test-001",
+        featureSlug: "google-ads",
+        category: "advertising",
+        channel: "ads",
+        audienceType: "audience-targeting",
+        dag: VALID_LINEAR_DAG,
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.category).toBe("advertising");
+    expect(res.body.channel).toBe("ads");
+    expect(res.body.audienceType).toBe("audience-targeting");
+  });
+
+  it("accepts a create that omits the optional dimension tags", async () => {
+    const res = await request
+      .post("/workflows")
+      .set(AUTH)
+      .send({
+        createdForBrandId: "brand-test-001",
+        featureSlug: "meta-ads",
+        dag: VALID_LINEAR_DAG,
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.category ?? null).toBeNull();
+    expect(res.body.channel ?? null).toBeNull();
+    expect(res.body.audienceType ?? null).toBeNull();
+  });
+
+  it("rejects a dimension tag outside the published vocabulary", async () => {
+    const res = await request
+      .post("/workflows")
+      .set(AUTH)
+      .send({
+        createdForBrandId: "brand-test-001",
+        featureSlug: "google-ads",
+        channel: "google-ads",
+        dag: VALID_LINEAR_DAG,
+      });
+
+    expect(res.status).toBe(400);
+    expect(JSON.stringify(res.body)).toContain("channel");
+  });
+
+  it("answers 400 naming the column when the database refuses a write", async () => {
+    const realInsert = mockDb.insert;
+    mockDb.insert = () => ({
+      values: () => ({
+        returning: () =>
+          Promise.reject(
+            Object.assign(
+              new Error('null value in column "category" violates not-null constraint'),
+              { code: "23502", table_name: "workflows", column_name: "category" },
+            ),
+          ),
+      }),
+    });
+
+    try {
+      const res = await request
+        .post("/workflows")
+        .set(AUTH)
+        .send({
+          createdForBrandId: "brand-test-001",
+          featureSlug: "google-ads",
+          dag: VALID_LINEAR_DAG,
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain("category");
+      expect(res.body.details).toMatchObject({ field: "category", code: "23502" });
+    } finally {
+      mockDb.insert = realInsert;
+    }
+  });
+
   it("creates a workflow with tags", async () => {
     const res = await request
       .post("/workflows")
