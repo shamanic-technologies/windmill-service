@@ -12,6 +12,11 @@ import { extractHttpEndpoints } from "./extract-http-endpoints.js";
 import { validateWorkflowEndpoints } from "./validate-workflow-endpoints.js";
 import type { DownstreamHeaders } from "./downstream-headers.js";
 import {
+  WorkflowCategorySchema,
+  WorkflowChannelSchema,
+  WorkflowAudienceTypeSchema,
+} from "../schemas.js";
+import {
   chatServiceComplete,
   type ChatServiceCompleteRequest,
   type ChatServiceCompleteResponse,
@@ -173,6 +178,20 @@ export async function generateWorkflow(
         }
       }
 
+      // The three tags are stored verbatim, so a value the model invents becomes a permanent,
+      // false claim about the workflow. Judge them against the same enums the API publishes.
+      const tagErrors = validateDimensionTags(result);
+      if (tagErrors.length > 0) {
+        if (attempt >= MAX_RETRIES) {
+          throw new GenerationValidationError(
+            "Generated workflow carries dimension tags outside the published vocabulary",
+            tagErrors,
+          );
+        }
+        userMessage = buildRetryUserMessage(input.description, tagErrors);
+        continue;
+      }
+
       return {
         dag: result.dag,
         category: result.category,
@@ -193,6 +212,36 @@ export async function generateWorkflow(
   }
 
   throw new Error("Generation exceeded maximum retries without producing a workflow");
+}
+
+/**
+ * Checks the model's three descriptive tags against the published enums.
+ *
+ * They are provenance — nothing branches on them — which is exactly why a wrong value survives:
+ * it never breaks anything and it outlives whoever wrote it.
+ */
+function validateDimensionTags(result: {
+  category: string;
+  channel: string;
+  audienceType: string;
+}): Array<{ field: string; message: string }> {
+  const checks = [
+    { field: "category", value: result.category, schema: WorkflowCategorySchema },
+    { field: "channel", value: result.channel, schema: WorkflowChannelSchema },
+    { field: "audienceType", value: result.audienceType, schema: WorkflowAudienceTypeSchema },
+  ] as const;
+
+  return checks.flatMap(({ field, value, schema }) => {
+    if (schema.safeParse(value).success) return [];
+    return [
+      {
+        field,
+        message: `"${String(value)}" is not a valid ${field}. Allowed: ${schema.options
+          .map((option: string) => `"${option}"`)
+          .join(" | ")}.`,
+      },
+    ];
+  });
 }
 
 export class GenerationValidationError extends Error {
