@@ -47,7 +47,8 @@
           "sales",
           "pr",
           "outlets",
-          "journalists"
+          "journalists",
+          "advertising"
         ],
         "description": "Optional workflow category tag."
       },
@@ -56,7 +57,8 @@
         "nullable": true,
         "enum": [
           "email",
-          "database"
+          "database",
+          "ads"
         ],
         "description": "Optional workflow channel tag."
       },
@@ -65,7 +67,8 @@
         "nullable": true,
         "enum": [
           "cold-outreach",
-          "discovery"
+          "discovery",
+          "audience-targeting"
         ],
         "description": "Optional workflow audience type tag."
       },
@@ -2043,12 +2046,12 @@
                   "$ref": "#/components/schemas/WorkflowCategory"
                 },
                 {
-                  "description": "Workflow category."
+                  "description": "Workflow category — the acquisition domain the workflow works in. \"advertising\" covers paid-reach channels (Google Ads, Meta Ads, and the rest of the paid family)."
                 }
               ]
             },
             "required": false,
-            "description": "Workflow category.",
+            "description": "Workflow category — the acquisition domain the workflow works in. \"advertising\" covers paid-reach channels (Google Ads, Meta Ads, and the rest of the paid family).",
             "name": "category",
             "in": "query"
           },
@@ -2059,12 +2062,12 @@
                   "$ref": "#/components/schemas/WorkflowChannel"
                 },
                 {
-                  "description": "Workflow distribution channel."
+                  "description": "Workflow distribution channel — how the work reaches people. \"ads\" means the workflow buys placements on an ad platform rather than sending or storing anything."
                 }
               ]
             },
             "required": false,
-            "description": "Workflow distribution channel.",
+            "description": "Workflow distribution channel — how the work reaches people. \"ads\" means the workflow buys placements on an ad platform rather than sending or storing anything.",
             "name": "channel",
             "in": "query"
           },
@@ -2075,12 +2078,12 @@
                   "$ref": "#/components/schemas/WorkflowAudienceType"
                 },
                 {
-                  "description": "Workflow audience type."
+                  "description": "Workflow audience type — how the workflow relates to the people it reaches. \"audience-targeting\" means the audience is described to an ad platform as targeting criteria, not contacted one by one (\"cold-outreach\") and not collected into a database (\"discovery\")."
                 }
               ]
             },
             "required": false,
-            "description": "Workflow audience type.",
+            "description": "Workflow audience type — how the workflow relates to the people it reaches. \"audience-targeting\" means the audience is described to an ad platform as targeting criteria, not contacted one by one (\"cold-outreach\") and not collected into a database (\"discovery\").",
             "name": "audienceType",
             "in": "query"
           },
