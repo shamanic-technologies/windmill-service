@@ -14,6 +14,23 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 const TIMEOUT_LITERAL = "AbortSignal.timeout(600_000)";
 
+/**
+ * Files whose fetches are deliberately given a SHORTER deadline, and why.
+ *
+ * The 10-minute default exists for our OWN long-running downstreams. A call to a
+ * third party on a path that degrades rather than fails must not hold a run open
+ * for ten minutes to learn the same thing a few seconds tells it — so these are
+ * held to "every fetch is bounded" rather than to the default bound.
+ */
+const SHORT_DEADLINE_FILES = new Map([
+  [
+    "src/lib/ai-meeting-booking-dag.ts",
+    "Calendly's public booking API — unreadable availability degrades to the plain booking link, so a long hang would only delay the prospect's answer.",
+  ],
+]);
+
+const ANY_TIMEOUT_LITERAL = "AbortSignal.timeout(";
+
 function listTsFiles(dir: string): string[] {
   const out: string[] = [];
   for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -49,6 +66,14 @@ describe("fetch-timeout audit", () => {
     if (fetchCount === 0) continue;
 
     const relPath = filePath.slice(REPO_ROOT.length + 1);
+    if (SHORT_DEADLINE_FILES.has(relPath)) {
+      it(`${relPath} — every fetch is bounded (${SHORT_DEADLINE_FILES.get(relPath)})`, () => {
+        const bounded = source.split(ANY_TIMEOUT_LITERAL).length - 1;
+        expect(bounded).toBeGreaterThanOrEqual(fetchCount);
+      });
+      continue;
+    }
+
     it(`${relPath} — every fetch has AbortSignal.timeout(600_000)`, () => {
       const timeoutCount = countTimeoutMarkers(source);
       expect(timeoutCount).toBeGreaterThanOrEqual(fetchCount);
