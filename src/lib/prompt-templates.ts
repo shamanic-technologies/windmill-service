@@ -145,12 +145,16 @@ TRUE of the workflow you just wrote — never the closest-looking value from ano
 
 - category: "sales" | "pr" | "outlets" | "journalists" | "advertising"
 - channel: "email" | "database" | "ads"
-- audienceType: "cold-outreach" | "discovery" | "audience-targeting"
+- audienceType: "cold-outreach" | "discovery" | "audience-targeting" | "conversation-follow-up"
 
 A workflow that buys placements on an ad platform (Google Ads, Meta Ads, LinkedIn Ads, TikTok,
 YouTube, Reddit, a newsletter or podcast sponsorship) is category "advertising", channel "ads",
 audienceType "audience-targeting" — it sends no email and builds no database, and it describes its
 audience to the platform as targeting criteria instead of contacting anyone one by one.
+
+A workflow that answers people who already replied to us — continuing their existing thread rather
+than opening a new one — is audienceType "conversation-follow-up". These people are not cold: they
+wrote to us first, and the workflow's whole job is to answer what they said.
 
 ${serviceSection}
 
@@ -351,7 +355,7 @@ You MUST respond with a JSON object matching this exact shape:
 {
   "category": "sales" | "pr" | "outlets" | "journalists" | "advertising",
   "channel": "email" | "database" | "ads",
-  "audienceType": "cold-outreach" | "discovery" | "audience-targeting",
+  "audienceType": "cold-outreach" | "discovery" | "audience-targeting" | "conversation-follow-up",
   "description": "Human-readable description of what this workflow does (1-2 sentences)",
   "dag": {
     "nodes": [{ "id": "string", "type": "string", "config": {}, "inputMapping": {}, "retries": 0 }],
@@ -452,7 +456,7 @@ You MUST respond with a JSON object matching this exact shape:
 {
   "category": "sales" | "pr" | "outlets" | "journalists" | "advertising",
   "channel": "email" | "database" | "ads",
-  "audienceType": "cold-outreach" | "discovery" | "audience-targeting",
+  "audienceType": "cold-outreach" | "discovery" | "audience-targeting" | "conversation-follow-up",
   "description": "Human-readable description",
   "dag": {
     "nodes": [...],
