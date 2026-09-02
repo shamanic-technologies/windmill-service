@@ -152,11 +152,13 @@ export const WorkflowChannelSchema = z
   .openapi("WorkflowChannel");
 
 export const WorkflowAudienceTypeSchema = z
-  .enum(["cold-outreach", "discovery", "audience-targeting"])
+  .enum(["cold-outreach", "discovery", "audience-targeting", "conversation-follow-up"])
   .describe(
     "Workflow audience type — how the workflow relates to the people it reaches. " +
       "\"audience-targeting\" means the audience is described to an ad platform as targeting criteria, " +
-      "not contacted one by one (\"cold-outreach\") and not collected into a database (\"discovery\")."
+      "not contacted one by one (\"cold-outreach\") and not collected into a database (\"discovery\"). " +
+      "\"conversation-follow-up\" means the people are already in a conversation with us and answered: " +
+      "the workflow continues that thread rather than opening one."
   )
   .openapi("WorkflowAudienceType");
 
