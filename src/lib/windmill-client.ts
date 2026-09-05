@@ -83,6 +83,47 @@ export function isAmbiguousWindmillDispatchError(err: unknown): boolean {
   return err instanceof WindmillTransportError && err.dispatchAmbiguous;
 }
 
+/**
+ * A non-2xx answer from the Windmill REST API. Subclasses `Error` and keeps the
+ * exact same `message` shape the plain `Error` used to carry, so existing
+ * `message.includes("404")` callers keep working — the added fields exist so a
+ * caller can classify without parsing prose.
+ */
+export class WindmillApiError extends Error {
+  constructor(
+    public readonly status: number,
+    public readonly method: string,
+    public readonly path: string,
+    public readonly body: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = "WindmillApiError";
+  }
+}
+
+/**
+ * True when Windmill can never resolve this job, no matter how long we wait.
+ *
+ * Two shapes, both permanent:
+ *  - 404: the job id is unknown to Windmill (retention purge, wrong workspace).
+ *  - 5xx whose body says something was "not found": a job whose flow definition
+ *    was mutated underneath it. A workflow VERSION UPGRADE deletes the flow
+ *    nodes an in-flight job still references, and Windmill then answers
+ *    `500 Internal: windmill-common/src/cache.rs: Flow node not found` for that
+ *    job forever. Retrying it is retrying a corpse.
+ *
+ * Everything else (connect timeouts, socket resets, a plain 502/503 while
+ * Windmill restarts, a 5xx with no "not found" in it) is transient and must
+ * keep being retried.
+ */
+export function isUnresolvableWindmillJobError(err: unknown): boolean {
+  if (!(err instanceof WindmillApiError)) return false;
+  if (err.status === 404) return true;
+  if (err.status >= 500 && /not found/i.test(err.body)) return true;
+  return false;
+}
+
 export class WindmillClient {
   private baseUrl: string;
   private token: string;
@@ -127,7 +168,11 @@ export class WindmillClient {
 
       if (!res.ok) {
         const text = await res.text().catch(() => "");
-        throw new Error(
+        throw new WindmillApiError(
+          res.status,
+          method,
+          path,
+          text,
           `Windmill API error: ${method} ${path} → ${res.status} ${res.statusText}: ${text}`
         );
       }

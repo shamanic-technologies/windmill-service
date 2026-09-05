@@ -1,5 +1,5 @@
 import { eq, inArray } from "drizzle-orm";
-import type { WindmillClient } from "./windmill-client.js";
+import { isUnresolvableWindmillJobError, type WindmillClient } from "./windmill-client.js";
 import { closeRun } from "./runs-client.js";
 import { traceEvent } from "./trace-event.js";
 import { attributionContextToHeaders } from "./attribution-context.js";
@@ -15,6 +15,14 @@ import { attributionContextToHeaders } from "./attribution-context.js";
  * the compute never reaches its idle timeout, so the whole billing period is
  * charged as active even when nothing has executed.
  */
+/**
+ * How many CONSECUTIVE polls must see the same permanently-unresolvable answer
+ * from Windmill before the run is failed. One is enough to be right and not
+ * enough to be safe: the counter is what keeps a freak 404 during a Windmill
+ * restart from killing a live run.
+ */
+export const UNRESOLVABLE_JOB_POLL_ATTEMPTS = 3;
+
 export class JobPoller {
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private isPolling = false;
@@ -25,6 +33,15 @@ export class JobPoller {
    * swallowed and the run would never be reconciled.
    */
   private wokenDuringPoll = false;
+
+  /**
+   * Consecutive polls, per run, that got a permanently-unresolvable answer for
+   * the run's Windmill job. Reset by any poll that resolves the job or fails
+   * transiently, so only an uninterrupted streak terminates a run. In-memory on
+   * purpose: a restart simply re-observes the streak within ~30s, and there is
+   * nothing worth persisting about a counter that only ever counts to three.
+   */
+  private unresolvablePolls = new Map<string, number>();
 
   constructor(
     private db: any,
@@ -58,6 +75,74 @@ export class JobPoller {
       console.log("[workflow-service] JobPoller woken by a dispatched run");
     }
     this.start();
+  }
+
+  /**
+   * Terminate a run whose Windmill job Windmill itself can no longer resolve.
+   *
+   * A run left `queued` holds its `execution_key`, and `conflict_policy:
+   * "use_existing"` then dedups every later execute for that campaign onto the
+   * zombie — so one dead job silently disables a whole campaign forever. The
+   * run is failed (never `completed`: it did not complete) and the error says
+   * exactly what happened, which is what frees the key.
+   */
+  private async failUnresolvableRun(run: any, err: unknown): Promise<void> {
+    const table = this.workflowRunsTable;
+    const detail = err instanceof Error ? err.message : String(err);
+    const message =
+      `Windmill job ${run.windmillJobId} became unresolvable and will never report an outcome ` +
+      `(most often because the workflow was upgraded while the job was in flight, deleting the flow ` +
+      `nodes it referenced). Failing the run after ${UNRESOLVABLE_JOB_POLL_ATTEMPTS} consecutive ` +
+      `unresolvable polls so it stops holding its execution key. Windmill said: ${detail}`;
+
+    console.error(`[workflow-service] JobPoller: FAILING run ${run.id} — ${message}`);
+
+    try {
+      await this.db
+        .update(table)
+        .set({ status: "failed", result: null, error: message, completedAt: new Date() })
+        .where(eq(table.id, run.id));
+    } catch (updateErr) {
+      console.error(
+        `[workflow-service] JobPoller: failed to mark run ${run.id} as failed:`,
+        updateErr,
+      );
+      return;
+    }
+
+    if (run.runId && run.orgId) {
+      try {
+        await closeRun(run.runId, "failed", run.orgId);
+      } catch (closeErr) {
+        console.error(
+          `[workflow-service] JobPoller: failed to close run ${run.runId} in runs-service:`,
+          closeErr,
+        );
+      }
+    }
+
+    if (run.runId) {
+      const pollerHeaders: Record<string, string> = {};
+      if (run.orgId) pollerHeaders["x-org-id"] = run.orgId;
+      if (run.userId) pollerHeaders["x-user-id"] = run.userId;
+      if (run.workflowSlug) pollerHeaders["x-workflow-slug"] = run.workflowSlug;
+      if (run.featureSlug) pollerHeaders["x-feature-slug"] = run.featureSlug;
+      if (run.campaignId) pollerHeaders["x-campaign-id"] = run.campaignId;
+      Object.assign(pollerHeaders, attributionContextToHeaders(run.attributionContext));
+
+      traceEvent(run.runId, {
+        service: "workflow-service",
+        event: "job-unresolvable",
+        detail: message,
+        level: "error",
+        data: {
+          windmillJobId: run.windmillJobId,
+          workflowSlug: run.workflowSlug,
+          status: "failed",
+          reason: "windmill-job-unresolvable",
+        },
+      }, pollerHeaders).catch(() => {});
+    }
   }
 
   private async poll(): Promise<void> {
@@ -137,11 +222,35 @@ export class JobPoller {
               })
               .where(eq(table.id, run.id));
           }
+          this.unresolvablePolls.delete(run.id);
         } catch (err) {
-          console.error(
-            `[workflow-service] Error polling job ${run.windmillJobId}:`,
-            err
-          );
+          if (isUnresolvableWindmillJobError(err)) {
+            const seen = (this.unresolvablePolls.get(run.id) ?? 0) + 1;
+            this.unresolvablePolls.set(run.id, seen);
+            console.error(
+              `[workflow-service] JobPoller: Windmill cannot resolve job ${run.windmillJobId} for run ${run.id} (${seen}/${UNRESOLVABLE_JOB_POLL_ATTEMPTS}):`,
+              err,
+            );
+            if (seen >= UNRESOLVABLE_JOB_POLL_ATTEMPTS) {
+              this.unresolvablePolls.delete(run.id);
+              await this.failUnresolvableRun(run, err);
+            }
+          } else {
+            this.unresolvablePolls.delete(run.id);
+            console.error(
+              `[workflow-service] Error polling job ${run.windmillJobId}:`,
+              err
+            );
+          }
+        }
+      }
+
+      // Drop counters for runs that are no longer active, so the map cannot
+      // grow with ids nothing will ever poll again.
+      if (this.unresolvablePolls.size > 0) {
+        const activeIds = new Set(activeRuns.map((r: any) => r.id));
+        for (const id of [...this.unresolvablePolls.keys()]) {
+          if (!activeIds.has(id)) this.unresolvablePolls.delete(id);
         }
       }
     } catch (err) {
