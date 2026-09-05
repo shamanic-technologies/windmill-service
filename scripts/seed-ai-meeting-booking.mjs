@@ -84,6 +84,19 @@ async function call(method, path, body) {
   return { status: res.status, payload };
 }
 
+/**
+ * True when a stored DAG still ends its nothing-to-do branch without telling
+ * campaign-service the run had no work. Those runs re-fire on the run cadence
+ * (~10s) instead of the idle one (~10min), which is how one idle campaign came
+ * to account for half the fleet's run ledger in a day. The repair is an upgrade
+ * carrying the current DAG; re-running the script after it is a no-op.
+ */
+export function needsNoWorkAvailable(dag) {
+  const node = (dag?.nodes ?? []).find((n) => n?.id === "end-run-nobody-due");
+  if (!node) return false;
+  return node.config?.body?.noWorkAvailable !== true;
+}
+
 /** The (provider, model) a stored DAG drafts with, or null if it has no drafting step. */
 export function cellOf(dag) {
   const node = (dag?.nodes ?? []).find((n) => n?.config?.service === "chat");
@@ -105,14 +118,33 @@ async function main() {
   }
 
   const covered = new Map();
+  const stale = [];
   for (const w of existing.payload?.workflows ?? []) {
     const cell = cellOf(w.dag);
     if (cell) covered.set(cell, w.workflowDynastySlug ?? w.workflowSlug);
+    if (w.workflowDynastySlug && needsNoWorkAvailable(w.dag)) stale.push(w.workflowDynastySlug);
   }
 
   const cell = `${CELL.provider}::${CELL.model}`;
   console.log(`${FEATURE_SLUG}: ${existing.payload?.workflows?.length ?? 0} active workflow(s)`);
   console.log(APPLY ? "APPLY" : "DRY RUN (pass --apply to write)");
+
+  for (const slug of stale) {
+    if (!APPLY) {
+      console.log(`  ${slug}: would upgrade (nothing-to-do branch does not report noWorkAvailable)`);
+      continue;
+    }
+    const res = await call("POST", "/workflows/upgrade", {
+      workflowDynastySlug: slug,
+      dag: buildAiMeetingBookingDag(CELL),
+    });
+    if (res.status === 200 || res.status === 201) {
+      console.log(`  ${slug}: upgraded -> ${res.payload?.workflowSlug ?? "unknown"}`);
+    } else {
+      console.error(`  ${slug}: UPGRADE FAILED ${res.status} ${JSON.stringify(res.payload)}`);
+      process.exitCode = 1;
+    }
+  }
 
   if (covered.has(cell)) {
     console.log(`  ${cell}: already covered by ${covered.get(cell)}`);
