@@ -526,7 +526,10 @@ export async function main(offerFunnels, funnelKey) {
         },
       },
       // Nobody due right now is not the campaign being finished — the queue
-      // fills again as prospects reply and as follow-ups come due.
+      // fills again as prospects reply and as follow-ups come due. But it is
+      // also not an ordinary run: `noWorkAvailable` tells campaign-service the
+      // run had nothing to do, so it waits ~10 minutes instead of re-firing on
+      // the run cadence. It never stops the campaign and nothing else reads it.
       {
         id: "end-run-nobody-due",
         type: "http.call",
@@ -534,7 +537,7 @@ export async function main(offerFunnels, funnelKey) {
           service: "campaign",
           method: "POST",
           path: "/end-run",
-          body: { success: true, stopCampaign: false },
+          body: { success: true, stopCampaign: false, noWorkAvailable: true },
         },
       },
       {

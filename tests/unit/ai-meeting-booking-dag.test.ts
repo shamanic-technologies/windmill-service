@@ -171,7 +171,18 @@ describe("ai-meeting-booking DAG", () => {
   it("does not stop the campaign when nobody is due", () => {
     // Nothing due right now is contention or an empty queue, not a finished
     // campaign — the queue fills again as prospects reply.
-    expect(byId.get("end-run-nobody-due")?.config?.body).toEqual({ success: true, stopCampaign: false });
+    expect(byId.get("end-run-nobody-due")?.config?.body).toEqual({
+      success: true,
+      stopCampaign: false,
+      noWorkAvailable: true,
+    });
+  });
+
+  it("tells campaign-service the run had no work only when nobody was due", () => {
+    // The idle cadence belongs to campaign-service; this DAG only states the
+    // fact. A run that answered somebody, and a run that errored, say nothing.
+    expect(byId.get("end-run")?.config?.body).toEqual({ success: true, stopCampaign: false });
+    expect(byId.get("end-run-error")?.config?.body).toEqual({ success: false, stopCampaign: false });
   });
 });
 
